@@ -130,31 +130,28 @@ function WBase-WriteResultCsv
 {
     Param(
          [Parameter(Mandatory=$True)]
-         [array]$ReadMessagePath = $null
+         [string]$ReadMessagePath
     )
 
-    if ($ReadMessagePath -ne $null) {
-        $ReadMessagePath | ForEach {
-           $ReadMessageCommand = "Get-Content {0}" -f $_
-           $ReadResult = Invoke-Expression $ReadMessageCommand
-           Start-Sleep -Seconds 30
-           if ($ReadResult -ne $null){
-               $CaseNumber = 1
-               $ReadResult | ForEach {
-                  $JasonTest = ConvertFrom-Json -InputObject $_ -AsHashtable
-                  $HandelTestCase = $JasonTest.tc
-                  $HandelTestResult = $JasonTest.s
-                  [PsCustomObject]@{
-                     TestNumber = $CaseNumber
-                     TestCase = $HandelTestCase
-                     TestResult = $HandelTestResult
-                  }
-                  $CaseNumber = $CaseNumber + 1
-               } | Export-Csv -Path $WinTestResultCsv -NoTypeInformation
-           }
+    if (-not ([String]::IsNullOrEmpty($ReadMessagePath))) {
+        $ReadResult = Get-Content -Path $ReadMessagePath
+        if ([int]$ReadResult.length -ne 0){
+            $CaseNumber = 1
+            $ReadResult | ForEach {
+                $JasonTest = ConvertFrom-Json -InputObject $_ -AsHashtable
+                $HandelTestCase = $JasonTest.tc
+                $HandelTestResult = $JasonTest.s
+                [PsCustomObject]@{
+                   TestNumber = $CaseNumber
+                   TestCase = $HandelTestCase
+                   TestResult = $HandelTestResult
+                }
+                $CaseNumber = $CaseNumber + 1
+            } | Export-Csv -Path $WinTestResultCsv -NoTypeInformation
         }
     }
 }
+
 
 function WBase-CompareTestResult
 {
@@ -185,6 +182,9 @@ function WBase-CompareTestResult
             }
         }
 
+        # Generate result.csv file
+        WBase-WriteResultCsv -ReadMessagePath $WinTestResultFile
+
         Remove-Item `
             -Path $CompareFile `
             -Force `
@@ -192,8 +192,6 @@ function WBase-CompareTestResult
             -ErrorAction Stop | out-null
     }
 
-    # Generate result.csv file
-    WBase-WriteResultCsv -ReadMessagePath $WinTestResultFile
 }
 
 function WBase-HostDeviceInit
