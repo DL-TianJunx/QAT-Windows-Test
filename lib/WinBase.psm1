@@ -2677,7 +2677,7 @@ function WBase-UpgradeQatDevice
         # re-Add the QAT VF's
         $LocationInfo.VM.NameArray | ForEach-Object {
             $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            $PSSessionName = ("Session_{0}" -f $_.Name)
+            $PSSessionName = ("Session_{0}" -f $_)
             $Session = HV-PSSessionCreate `
                 -VMName $VMName `
                 -PSName $PSSessionName `
@@ -2700,7 +2700,7 @@ function WBase-UpgradeQatDevice
 
         $LocationInfo.VM.NameArray | ForEach-Object {
             $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            $PSSessionName = ("Session_{0}" -f $_.Name)
+            $PSSessionName = ("Session_{0}" -f $_)
             $Session = HV-PSSessionCreate `
                 -VMName $VMName `
                 -PSName $PSSessionName `
