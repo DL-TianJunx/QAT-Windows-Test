@@ -77,7 +77,7 @@ try {
         [System.Array]$ParcompBlock = (4096)
         [System.Array]$ParcompThread = (8)
         [System.Array]$ParcompIteration = (200)
-        [System.Array]$TestFileNameArray.Type = ("high")
+        [System.Array]$TestFileNameArray.Type = ("calgary")
         [System.Array]$TestFileNameArray.Size = (200)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
