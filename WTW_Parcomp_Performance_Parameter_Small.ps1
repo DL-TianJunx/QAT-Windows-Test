@@ -77,6 +77,7 @@ try {
         [System.Array]$ParcompBlock = (1024, 2048, 4096, 8192)
         [System.Array]$ParcompThread = (8)
         [System.Array]$ParcompIteration = (1, 200)
+        [System.Array]$ParcompCompressionType = ("dynamic")
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
         [System.Array]$ParcompProvider = $AnalyzeResult.Parcomp.Provider

@@ -186,9 +186,10 @@ $global:ParcompCompressType = [System.Array] @(
     "All"
 )
 
-$global:ParcompCompressionLevel = [System.Array] @(1, 2, 3)
+$global:ParcompCompressionLevel = [System.Array] @(1, 2, 3, 4)
 
 $global:ParcompCompressionType = [System.Array] @(
+    "static",
     "dynamic"
 )
 

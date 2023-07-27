@@ -73,7 +73,7 @@ try {
         [System.Array]$ParcompProvider = ("qat", "qatgzip", "qatgzipext")
         [System.Array]$ParcompCompressType = ("Compress", "deCompress")
         [System.Array]$ParcompBlock = (4096)
-        [System.Array]$ParcompIteration = (200)
+        [System.Array]$ParcompIteration = (100)
         [System.Array]$ParcompThread = (8)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
@@ -123,7 +123,9 @@ try {
         }
 
         if ([String]::IsNullOrEmpty($runTestCase)) {
-            [System.Array]$ParcompChunk = (64, 128, 256, 512)
+            [System.Array]$ParcompChunk = (64, 512)
+            [System.Array]$ParcompCompressionLevel = (1, 2)
+            [System.Array]$ParcompCompressionType = ("dynamic")
         }
     }
 
