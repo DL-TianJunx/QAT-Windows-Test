@@ -67,7 +67,8 @@ or
     -TestName <Name of test case> `
     -Iteration <Iteration of test case> `
     -InitVM $true `
-    -DebugMode $false
+    -DebugMode $false `
+    -UQMode $false
 ```
 
 ```shell
@@ -79,6 +80,7 @@ or
 -InitVM               [option] '$true', initialize or not the VM for HVMode.
 -RunOnLocal           [option] '$true', run this test suite on the local PC.
 -DebugMode            [option] '$false', disable and enable the Debug mode.
+-UQMode               [option] '$false', disable and enable the UQ mode.
 ```
 
 

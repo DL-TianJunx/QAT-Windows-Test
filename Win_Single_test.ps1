@@ -14,6 +14,8 @@ Param(
 
     [bool]$RunOnLocal = $true,
 
+    [bool]$UQMode = $false,
+
     [bool]$DebugMode = $false,
 
     [string]$ResultFile = "result.log"
@@ -25,6 +27,7 @@ Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
 
 $InitVMInt = ($InitVM) ? 1 : 0
 $RunOnLocalInt = ($RunOnLocal) ? 1 : 0
+$UQModeInt = ($UQMode) ? 1 : 0
 $DebugModeInt = ($DebugMode) ? 1 : 0
 try {
     For ($i = 1; $i -le $Iteration; $i++) {
@@ -70,13 +73,14 @@ try {
                     }
                 }
 
-                $runCommand = "{0} -BertaResultPath {1} -DriverPath {2} -runTestCase {3} -RunOnLocal {4} -DebugMode {5}" -f
+                $runCommand = "{0} -BertaResultPath {1} -DriverPath {2} -runTestCase {3} -RunOnLocal {4} -DebugMode {5} -UQMode {6}" -f
                     $TestSuiteName,
                     $BertaResultPath,
                     $DriverPath,
                     $TestName,
                     $RunOnLocalInt,
-                    $DebugModeInt
+                    $DebugModeInt,
+                    $UQModeInt
             }
 
             if ($TestName -match "WTW") {
