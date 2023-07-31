@@ -566,8 +566,6 @@ function WTL-ENVInit
         $VMTestBasePath = "\\{0}\\STV-tmp" -f $VMIP
         $HostPublicKey = "{0}\\{1}" -f $SSHKeys.Path, $SSHKeys.PublicKeyName
         $VMPublicKey = "{0}\\{1}" -f $VMTestBasePath, $SSHKeys.PublicKeyName
-        $HostFreeLoginScript = "{0}\\{1}" -f $LinuxShell.HostPath, $LinuxShell.FreeLogin
-        $VMFreeLoginScript = "{0}\\{1}" -f $VMTestBasePath, $LinuxShell.FreeLogin
         $HostNetWorkConfig = "{0}\\{1}" -f $LinuxShell.HostPath, $STVNetNat.NetWorkConfig
         $VMNetWorkConfig = "{0}\\{1}" -f $VMTestBasePath, $STVNetNat.NetWorkConfig
         $HostVFDriver = "{0}\\{1}" -f $LocationInfo.VF.DriverPath, $LocationInfo.VF.DriverName
@@ -581,14 +579,6 @@ function WTL-ENVInit
         if (Test-Path -Path $VMPublicKey) {
             Remove-Item `
                 -Path $VMPublicKey `
-                -Force `
-                -Confirm:$false `
-                -ErrorAction Stop | out-null
-        }
-
-        if (Test-Path -Path $VMFreeLoginScript) {
-            Remove-Item `
-                -Path $VMFreeLoginScript `
                 -Force `
                 -Confirm:$false `
                 -ErrorAction Stop | out-null
@@ -611,7 +601,6 @@ function WTL-ENVInit
         }
 
         Copy-Item -Path $HostPublicKey -Destination $VMPublicKey | out-null
-        Copy-Item -Path $HostFreeLoginScript -Destination $VMFreeLoginScript | out-null
         Copy-Item -Path $HostNetWorkConfig -Destination $VMNetWorkConfig | out-null
         Copy-Item -Path $HostVFDriver -Destination $VMVFDriver | out-null
 

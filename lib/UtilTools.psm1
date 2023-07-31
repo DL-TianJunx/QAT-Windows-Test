@@ -1037,7 +1037,7 @@ function UT-CreateSSHKeys
     )
     $ConfigInfo | Out-File $LocalConfig -Append -Encoding ascii
     # disable inheritance
-    UT-SetNoInheritance -FilePathName  $LocalConfig | out-null
+    # UT-SetNoInheritance -FilePathName $LocalConfig | out-null
 
     Win-DebugTimestamp -output (
         "Host: Create SSH keys {0} and {1}" -f $LocalPrivateKey, $LocalPublicKey
