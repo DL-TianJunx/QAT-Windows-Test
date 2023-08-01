@@ -961,6 +961,15 @@ function UT-SetNoInheritance
         [string]$FilePathName
     )
 
+    # get current permissions
+    $acl = Get-Acl -Path $FilePathName
+
+    # disable inheritance
+    $acl.SetAccessRuleProtection($true, $false)
+
+    # set new permissions
+    $acl | Set-Acl -Path $FilePathName
+
     Invoke-Command -ScriptBlock {
         Param($FilePathName)
         $localPath = (pwd).path
@@ -971,15 +980,6 @@ function UT-SetNoInheritance
         cacls $FileName /P Administrator:F /E
         cd $localPath
     } -ArgumentList $FilePathName | out-null
-
-    # get current permissions
-    $acl = Get-Acl -Path $FilePathName
-
-    # disable inheritance
-    $acl.SetAccessRuleProtection($true, $false)
-
-    # set new permissions
-    $acl | Set-Acl -Path $FilePathName
 }
 
 function UT-CreateSSHKeys
@@ -1011,12 +1011,6 @@ function UT-CreateSSHKeys
     }
 
     if (Test-Path -Path $LocalConfig) {
-        $localPath = (pwd).path
-        cd $SSHKeys.Path
-        takeown /f $SSHKeys.ConfigName
-        cacls $SSHKeys.ConfigName /P Administrator:F /E
-        cd $localPath
-
         Remove-Item `
             -Path $LocalConfig `
             -Force `
@@ -1037,7 +1031,7 @@ function UT-CreateSSHKeys
     )
     $ConfigInfo | Out-File $LocalConfig -Append -Encoding ascii
     # disable inheritance
-    # UT-SetNoInheritance -FilePathName $LocalConfig | out-null
+    UT-SetNoInheritance -FilePathName $LocalConfig | out-null
 
     Win-DebugTimestamp -output (
         "Host: Create SSH keys {0} and {1}" -f $LocalPrivateKey, $LocalPublicKey
