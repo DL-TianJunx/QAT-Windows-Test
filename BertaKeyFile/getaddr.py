@@ -64,28 +64,6 @@ def get_bind_data():
     finally:
         f.close()
 
-    # CY: reset host ip
-    host_ip = None
-    with os.popen("ipconfig /all") as lines:
-        ip_flag = False
-        for line in lines:
-            line = line.strip()
-            if line.endswith("(Mgmt):"):
-                ip_flag = True
-
-            if ip_flag:
-                if line.startswith("IPv4"):
-                    host_ip = line.split(":")[1].strip().split("(")[0]
-                    break
-
-    bind_data["my_ip"] = host_ip
-    f = open(bind_file, 'w')
-    data = ""
-    for item in bind_data:
-        data += str(item) + ': ' + str(bind_data[item]) + '\n'
-    f.write(data)
-    f.close()
-
     return bind_data
 
 
@@ -222,6 +200,33 @@ def _query_potential_servers_over_udp(try_once=False):
 def _query_current_server_over_xmlrpc(bind_data):
     my_mac = bind_data['my_mac'].lower()
 
+    # CY: get my ip
+    my_ip = None
+    for index in range(10):
+        for net_info in network_checks.get_network_list():
+            if net_info.mac_address.lower() == my_mac.lower():
+                my_ip = net_info.address
+
+        if my_ip:
+            break
+        else:
+            log.info('Can not found IP from mac (%s) and try again %s', my_mac, index)
+            time.sleep(5)
+
+    if my_ip:
+        log.info('Get IP (%s) from mac (%s)', my_ip, my_mac)
+        if my_ip != bind_data['my_ip']:
+            bind_file = get_bind_file()
+            bind_data["my_ip"] = my_ip
+            f = open(bind_file, 'w')
+            data = ""
+            for item in bind_data:
+                data += str(item) + ': ' + str(bind_data[item]) + '\n'
+            f.write(data)
+            f.close()
+    else:
+        log.info('Can not found IP from mac (%s)', my_mac)
+
     # get bind data from server
     log.info("Searching for server's address over XML-RPC...")
     log.info('bind data from file: %s', bind_data)
@@ -237,15 +242,6 @@ def _query_current_server_over_xmlrpc(bind_data):
 
     if not data:
         log.info('no data received')
-
-    # get my ip
-    my_ip = None
-    for net_info in network_checks.get_network_list():
-        if net_info.mac_address.lower() == my_mac.lower():
-            my_ip = net_info.address
-
-    if not my_ip:
-        log.info('my_ip not found for mac %s', my_mac)
 
     return data, my_ip
 
