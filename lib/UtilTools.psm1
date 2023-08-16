@@ -52,11 +52,10 @@ function UT-TraceLogStart
                         -rt `
                         -level 3 `
                         -matchanykw 0xFFFFFFFF `
-                        -b 200 `
+                        -b 1000 `
                         -ft 1 `
                         -min 4 `
                         -max 21 `
-                        -seq 200 `
                         -hybridshutdown stop | out-null
                 }
 
@@ -99,11 +98,10 @@ function UT-TraceLogStart
                     -rt `
                     -level 4 `
                     -matchanykw 0xFFFFFFFF `
-                    -b 200 `
+                    -b 1000 `
                     -ft 1 `
                     -min 4 `
                     -max 21 `
-                    -seq 200 `
                     -hybridshutdown stop | out-null
             }
 
