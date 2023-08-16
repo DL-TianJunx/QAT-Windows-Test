@@ -198,52 +198,60 @@ def _query_potential_servers_over_udp(try_once=False):
 
 
 def _query_current_server_over_xmlrpc(bind_data):
+    log.info("Searching for server's address over XML-RPC...")
     my_mac = bind_data['my_mac'].lower()
 
-    # CY: get my ip
+    # CY: get my ip and change bind data
     my_ip = None
+    server_data = None
     for index in range(10):
         for net_info in network_checks.get_network_list():
             if net_info.mac_address.lower() == my_mac.lower():
                 my_ip = net_info.address
 
         if my_ip:
-            break
+            log.info('Get IP (%s) from mac (%s)', my_ip, my_mac)
+            if my_ip != bind_data['my_ip']:
+                bind_data["my_ip"] = my_ip
         else:
             log.info('Can not found IP from mac (%s) and try again %s', my_mac, index)
-            time.sleep(5)
+            time.sleep(20)
+            continue
+
+        # get bind data from server
+        url = 'http://%s:%s' % (bind_data['ip'], bind_data['ctrl_port'])
+        server = xmlrpclib.Server(url, allow_none=True)
+        socket.setdefaulttimeout(30)
+        try:
+            server_data = server.get_bind_data(my_mac)
+        except:
+            log.info('Can not get bind data from IP (%s) and try again %s', my_ip, index)
+            server_data = None
+            continue
+
+        if server_data:
+            break
+            socket.setdefaulttimeout(None)
+
+    if not server_data:
+        log.info('no data received')
+        log.exception('IGNORED EXCEPTION')
 
     if my_ip:
-        log.info('Get IP (%s) from mac (%s)', my_ip, my_mac)
-        if my_ip != bind_data['my_ip']:
-            bind_file = get_bind_file()
-            bind_data["my_ip"] = my_ip
-            f = open(bind_file, 'w')
-            data = ""
-            for item in bind_data:
-                data += str(item) + ': ' + str(bind_data[item]) + '\n'
-            f.write(data)
-            f.close()
+        bind_file = get_bind_file()
+        bind_data["my_ip"] = my_ip
+        f = open(bind_file, 'w')
+        data = ""
+        for item in bind_data:
+            data += str(item) + ': ' + str(bind_data[item]) + '\n'
+        f.write(data)
+        f.close()
     else:
         log.info('Can not found IP from mac (%s)', my_mac)
 
-    # get bind data from server
-    log.info("Searching for server's address over XML-RPC...")
     log.info('bind data from file: %s', bind_data)
-    url = 'http://%s:%s' % (bind_data['ip'], bind_data['ctrl_port'])
-    server = xmlrpclib.Server(url, allow_none=True)
-    socket.setdefaulttimeout(20)
-    try:
-        data = server.get_bind_data(my_mac)
-    except:
-        log.exception('IGNORED EXCEPTION')
-        data = None
-    socket.setdefaulttimeout(None)
 
-    if not data:
-        log.info('no data received')
-
-    return data, my_ip
+    return server_data, my_ip
 
 
 def _get_regexp_and_value(data, key):
