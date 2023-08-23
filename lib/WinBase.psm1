@@ -2293,42 +2293,89 @@ function WBase-CheckQatDevice
         list = [System.Array] @()
     }
 
-    if ($Remote) {
-        $CheckNumber = $LocationInfo.VF.Number
-        $ReturnValue.list = Invoke-Command -Session $Session -ScriptBlock {
-            Param($LocationInfo)
-            Get-PnpDevice -friendlyname $LocationInfo.FriendlyName -PresentOnly
-        } -ArgumentList $LocationInfo
-    } else {
-        $CheckNumber = $LocationInfo.PF.Number
-        $ReturnValue.list = Invoke-Command -ScriptBlock {
-            Param($LocationInfo)
-            Get-PnpDevice -friendlyname $LocationInfo.FriendlyName -PresentOnly
-        } -ArgumentList $LocationInfo
-    }
+    for ($it = 0; $it -lt 20; $it++) {
+        if ($Remote) {
+            $CheckNumber = $LocationInfo.VF.Number
+            $GetPnPResult = Invoke-Command -Session $Session -ScriptBlock {
+                Param($LocationInfo)
+                $ReturnValue = [hashtable] @{
+                    result = [System.Array] @()
+                    error = $null
+                }
 
-    $ReturnValue.list | ForEach-Object {
-        if ([String]::IsNullOrEmpty($CheckStatus)) {
-            $ReturnValue.number += 1
+                $GetPnpError = $null
+                $ReturnValue.result = Get-PnpDevice `
+                    -friendlyname $LocationInfo.FriendlyName `
+                    -PresentOnly `
+                    -ErrorAction SilentlyContinue `
+                    -ErrorVariable GetPnpError
+
+                $ReturnValue.error = $GetPnpError
+
+                return $ReturnValue
+            } -ArgumentList $LocationInfo
         } else {
-            if ($_.Status -eq $CheckStatus) {
-                $ReturnValue.number += 1
+            $CheckNumber = $LocationInfo.PF.Number
+            $GetPnPResult = Invoke-Command -ScriptBlock {
+                Param($LocationInfo)
+                $ReturnValue = [hashtable] @{
+                    result = $true
+                    error = $null
+                }
+
+                $GetPnpError = $null
+                $ReturnValue.result = Get-PnpDevice `
+                    -friendlyname $LocationInfo.FriendlyName `
+                    -PresentOnly `
+                    -ErrorAction SilentlyContinue `
+                    -ErrorVariable GetPnpError
+
+                $ReturnValue.error = $GetPnpError
+
+                return $ReturnValue
+            } -ArgumentList $LocationInfo
+        }
+
+        if ([String]::IsNullOrEmpty($GetPnPResult.error)) {
+            $ReturnValue.list = $GetPnPResult.result
+            $ReturnValue.list | ForEach-Object {
+                if ([String]::IsNullOrEmpty($CheckStatus)) {
+                    $ReturnValue.number += 1
+                } else {
+                    if ($_.Status -eq $CheckStatus) {
+                        $ReturnValue.number += 1
+                    }
+                }
             }
-        }
-    }
 
-    if ($ReturnValue.number -eq 0) {
-        $ReturnValue.result = $false
-    } else {
-        if ($ReturnValue.number -ne $CheckNumber) {
-            $ReturnValue.result = $false
-        }
-    }
+            if ($ReturnValue.number -eq 0) {
+                $ReturnValue.result = $false
+            } else {
+                if ($ReturnValue.number -ne $CheckNumber) {
+                    $ReturnValue.result = $false
+                }
+            }
 
-    if ($ReturnValue.result) {
-        Win-DebugTimestamp -output ("Double check VF device number is correct")
-    } else {
-        Win-DebugTimestamp -output ("Double check VF device number is incorrect")
+            if ($ReturnValue.result) {
+                if ($Remote) {
+                    Win-DebugTimestamp -output ("Double check VF device number is correct")
+                } else {
+                    Win-DebugTimestamp -output ("Double check PF device number is correct")
+                }
+            } else {
+                if ($Remote) {
+                    Win-DebugTimestamp -output ("Double check VF device number is incorrect")
+                } else {
+                    Win-DebugTimestamp -output ("Double check PF device number is incorrect")
+                }
+            }
+
+            break
+        } else {
+            Win-DebugTimestamp -output ("Get PnP devices is error: {0}" -f $GetPnPResult.error)
+            Win-DebugTimestamp -output ("Wait 10s and try again: {0}" -f $it)
+            Start-Sleep -Seconds 10
+        }
     }
 
     return $ReturnValue
@@ -2696,7 +2743,7 @@ function WBase-UpgradeQatDevice
             }
         }
 
-        Start-Sleep -Seconds 90
+        Start-Sleep -Seconds 30
 
         $LocationInfo.VM.NameArray | ForEach-Object {
             $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
