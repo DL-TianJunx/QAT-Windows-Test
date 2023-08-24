@@ -2358,22 +2358,22 @@ function WBase-CheckQatDevice
 
             if ($ReturnValue.result) {
                 if ($Remote) {
-                    Win-DebugTimestamp -output ("Double check VF device number is correct")
+                    Win-DebugTimestamp -output ("{0}: Double check VF device number is correct" -f $Session.Name)
                 } else {
-                    Win-DebugTimestamp -output ("Double check PF device number is correct")
+                    Win-DebugTimestamp -output ("Host: Double check PF device number is correct")
                 }
             } else {
                 if ($Remote) {
-                    Win-DebugTimestamp -output ("Double check VF device number is incorrect")
+                    Win-DebugTimestamp -output ("{0}: Double check VF device number is incorrect" -f $Session.Name)
                 } else {
-                    Win-DebugTimestamp -output ("Double check PF device number is incorrect")
+                    Win-DebugTimestamp -output ("Host: Double check PF device number is incorrect")
                 }
             }
 
             break
         } else {
             Win-DebugTimestamp -output ("Get PnP devices is error: {0}" -f $GetPnPResult.error)
-            Win-DebugTimestamp -output ("Wait 10s and try again: {0}" -f $it)
+            Win-DebugTimestamp -output ("Wait 10s and try again: {0}" -f ($it + 1))
             Start-Sleep -Seconds 10
         }
     }
