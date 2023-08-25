@@ -2630,10 +2630,10 @@ function WBase-HeartbeatQatDevice
                     }
                 }
 
-                Start-Sleep -Seconds 45
+                Start-Sleep -Seconds 10
             }
 
-            Start-Sleep -Seconds 60
+            Start-Sleep -Seconds 90
         }
 
         if ($ReturnValue) {
@@ -3436,22 +3436,12 @@ function WBase-CNGTest
     }
 
     if ($Side -eq "host") {
-        $MAXThreadNumber = [int](12 * [int]$LocationInfo.PF.Number)
-        if ([int]$numThreads -gt $MAXThreadNumber) {
-            $numThreads = $MAXThreadNumber
-        }
-
         $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
         if (Test-Path -Path $TestPath) {
             Get-Item -Path $TestPath | Remove-Item -Recurse
         }
         New-Item -Path $TestPath -ItemType Directory
     } elseif ($Side -eq "remote") {
-        $MAXThreadNumber = [int](12 * [int]$LocationInfo.VF.Number)
-        if ([int]$numThreads -gt $MAXThreadNumber) {
-            $numThreads = $MAXThreadNumber
-        }
-
         $PSSessionName = ("Session_{0}" -f $VMNameSuffix)
         $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
 
