@@ -216,6 +216,11 @@ function HV-GenerateVMVFConfig
         }
     }
 
+    Win-DebugTimestamp -output ("Generate VMVFOS configs:")
+    Foreach ($VMVFOS in $ReturnValue) {
+        Win-DebugTimestamp -output ("    --> {0}" -f $VMVFOS)
+    }
+
     return $ReturnValue
 }
 
