@@ -1229,6 +1229,8 @@ function UT-WorkAround
     }
 
     $DisableDeviceFlag = $DisableFlag
+
+    <#
     $regeditKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\"
 
     if ($Remote) {
@@ -1249,6 +1251,7 @@ function UT-WorkAround
 
         $DisableDeviceFlag = $true
     }
+    #>
 
     if ($DisableDeviceFlag) {
         if ($Remote) {
