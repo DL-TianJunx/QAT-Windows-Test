@@ -98,10 +98,12 @@ try {
                 CNGTest = [hashtable] @{
                     Flag = $true
                     TestList = [System.Array] @()
+                    Operation = [System.Array] @("heartbeat")
                 }
                 Parcomp = [hashtable] @{
                     Flag = $true
                     TestList = [System.Array] @()
+                    Operation = [System.Array] @("heartbeat")
                 }
             }
             Installer = [hashtable] @{
@@ -139,10 +141,12 @@ try {
                 CNGTest = [hashtable] @{
                     Flag = $true
                     TestList = [System.Array] @()
+                    Operation = [System.Array] @("heartbeat", "disable")
                 }
                 Parcomp = [hashtable] @{
                     Flag = $true
                     TestList = [System.Array] @()
+                    Operation = [System.Array] @("heartbeat", "disable")
                 }
             }
             Installer = [hashtable] @{
@@ -180,10 +184,12 @@ try {
                 CNGTest = [hashtable] @{
                     Flag = $true
                     TestList = [System.Array] @()
+                    Operation = [System.Array] @("heartbeat", "disable")
                 }
                 Parcomp = [hashtable] @{
                     Flag = $true
                     TestList = [System.Array] @()
+                    Operation = [System.Array] @("heartbeat", "disable")
                 }
             }
             Installer = [hashtable] @{
@@ -342,7 +348,6 @@ try {
     $CNGtestTestPathName = "CNGTest"
     $ParcompTestPathName = "ParcompTest"
     $VMVFOSConfig = "1vm_1vf_windows2022"
-    [System.Array]$AllTestType.Operation = ("heartbeat", "disable")
 
     Foreach ($CompareType in $CompareTypes) {
         if ($CompareType -eq "true") {
@@ -448,7 +453,7 @@ try {
 
                                     if ($CompareFlag) {
                                         if ($SmokeTestTestType -eq "Fallback") {
-                                            Foreach ($TestType in $AllTestType.Operation) {
+                                            Foreach ($TestType in $SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].CNGTest.Operation) {
                                                 $testNameTmp = "{0}_{1}" -f $testName, $TestType
 
                                                 $TestCaseResultsList = [hashtable] @{
@@ -576,7 +581,7 @@ try {
                                         }
 
                                         if ($SmokeTestTestType -eq "Fallback") {
-                                            Foreach ($TestType in $AllTestType.Operation) {
+                                            Foreach ($TestType in $SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].CNGTest.Operation) {
                                                 $testNameTmp = "{0}_{1}" -f $testName, $TestType
 
                                                 if ($SmokeTestModeType -eq "HVMode") {
@@ -668,7 +673,7 @@ try {
 
                                     if ($CompareFlag) {
                                         if ($SmokeTestTestType -eq "Fallback") {
-                                            Foreach ($TestType in $AllTestType.Operation) {
+                                            Foreach ($TestType in $SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].Parcomp.Operation) {
                                                 $testNameTmp = "{0}_{1}" -f $testName, $TestType
 
                                                 $TestCaseResultsList = [hashtable] @{
@@ -802,7 +807,7 @@ try {
                                         }
 
                                         if ($SmokeTestTestType -eq "Fallback") {
-                                            Foreach ($TestType in $AllTestType.Operation) {
+                                            Foreach ($TestType in $SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].Parcomp.Operation) {
                                                 $testNameTmp = "{0}_{1}" -f $testName, $TestType
 
                                                 if ($SmokeTestModeType -eq "HVMode") {
