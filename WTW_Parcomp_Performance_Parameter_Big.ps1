@@ -165,9 +165,8 @@ try {
             }
 
             Foreach ($TestCase in $TestCaseList) {
-                # deCompress: qatgzip and qatgzipext not support -k -t -Q
-                if (($TestCase.Provider -eq "qatgzip") -or
-                    ($TestCase.Provider -eq "qatgzipext")) {
+                # deCompress: qatgzip not support -k -t -Q
+                if ($TestCase.Provider -eq "qatgzip") {
                     if (($TestCase.CompressType -eq "deCompress") -or
                         ($TestCase.CompressType -eq "All")) {
                         continue

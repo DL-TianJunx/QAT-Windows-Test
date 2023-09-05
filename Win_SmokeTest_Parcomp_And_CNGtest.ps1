@@ -305,10 +305,9 @@ try {
                         }
 
                         if ($SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].Parcomp.Flag) {
-                            if ($SmokeTestModeType -eq "HostUQ") {
-                                $ParcompProvider += "qatlz4"
-                            }
-
+                            [System.Array]$ParcompProvider = ("qatgzipext")
+                            [System.Array]$TestFileNameArray.Type = ("calgary")
+                            [System.Array]$TestFileNameArray.Size = (200)
                             [System.Array]$ParcompIteration = (200)
                             [System.Array]$ParcompThread = (8)
                         }
@@ -633,11 +632,10 @@ try {
 
                             if ($SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].Parcomp.Flag) {
                                 Foreach ($TestCase in $SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].Parcomp.TestList) {
-                                    # deCompress: qatgzip and qatgzipext not support -k -t -Q
+                                    # deCompress: qatgzip not support -k -t -Q
                                     if (($SmokeTestTestType -eq "Performance") -or
                                         ($SmokeTestTestType -eq "Fallback")) {
-                                        if (($TestCase.Provider -eq "qatgzip") -or
-                                            ($TestCase.Provider -eq "qatgzipext")) {
+                                        if ($TestCase.Provider -eq "qatgzip") {
                                             if (($TestCase.CompressType -eq "deCompress") -or
                                                 ($TestCase.CompressType -eq "All")) {
                                                 continue
