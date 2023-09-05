@@ -3220,6 +3220,21 @@ function WBase-Parcomp
         if ($Side -eq "host") {
             $ParcompPSOut = Invoke-Command -ScriptBlock {
                 Param($ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog)
+                if (Test-Path -Path $TestParcompOutLog) {
+                    Remove-Item `
+                        -Path $TestParcompOutLog `
+                        -Force `
+                        -Confirm:$false `
+                        -ErrorAction Stop | out-null
+                }
+                if (Test-Path -Path $TestParcompErrorLog) {
+                    Remove-Item `
+                        -Path $TestParcompErrorLog `
+                        -Force `
+                        -Confirm:$false `
+                        -ErrorAction Stop | out-null
+                }
+
                 Start-Process -FilePath $ParcompExe `
                               -ArgumentList $ParcompArges `
                               -RedirectStandardOutput $TestParcompOutLog `
@@ -3229,6 +3244,21 @@ function WBase-Parcomp
         } elseif ($Side -eq "remote") {
             $ParcompPSOut = Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog)
+                if (Test-Path -Path $TestParcompOutLog) {
+                    Remove-Item `
+                        -Path $TestParcompOutLog `
+                        -Force `
+                        -Confirm:$false `
+                        -ErrorAction Stop | out-null
+                }
+                if (Test-Path -Path $TestParcompErrorLog) {
+                    Remove-Item `
+                        -Path $TestParcompErrorLog `
+                        -Force `
+                        -Confirm:$false `
+                        -ErrorAction Stop | out-null
+                }
+
                 Start-Process -FilePath $ParcompExe `
                               -ArgumentList $ParcompArges `
                               -RedirectStandardOutput $TestParcompOutLog `
@@ -3517,6 +3547,21 @@ function WBase-CNGTest
     if ($Side -eq "host") {
         $CNGTestPSOut = Invoke-Command -ScriptBlock {
             Param($CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog)
+            if (Test-Path -Path $CNGTestOutLog) {
+                Remove-Item `
+                    -Path $CNGTestOutLog `
+                    -Force `
+                    -Confirm:$false `
+                    -ErrorAction Stop | out-null
+            }
+            if (Test-Path -Path $CNGTestErrorLog) {
+                Remove-Item `
+                    -Path $CNGTestErrorLog `
+                    -Force `
+                    -Confirm:$false `
+                    -ErrorAction Stop | out-null
+            }
+
             Start-Process -FilePath $CNGTestExe `
                           -ArgumentList $CNGTestArges `
                           -RedirectStandardOutput $CNGTestOutLog `
@@ -3526,6 +3571,21 @@ function WBase-CNGTest
     } elseif ($Side -eq "remote") {
         $CNGTestPSOut = Invoke-Command -Session $Session -ScriptBlock {
             Param($CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog)
+            if (Test-Path -Path $CNGTestOutLog) {
+                Remove-Item `
+                    -Path $CNGTestOutLog `
+                    -Force `
+                    -Confirm:$false `
+                    -ErrorAction Stop | out-null
+            }
+            if (Test-Path -Path $CNGTestErrorLog) {
+                Remove-Item `
+                    -Path $CNGTestErrorLog `
+                    -Force `
+                    -Confirm:$false `
+                    -ErrorAction Stop | out-null
+            }
+
             Start-Process -FilePath $CNGTestExe `
                           -ArgumentList $CNGTestArges `
                           -RedirectStandardOutput $CNGTestOutLog `

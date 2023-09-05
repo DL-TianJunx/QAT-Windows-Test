@@ -1848,7 +1848,7 @@ function WTW-ParcompSWfallback
                                                   -TestFileType $TestFileType `
                                                   -TestFileSize $TestFileSize
         }
-        <#
+
         Start-Sleep -Seconds 10
 
         # Check parcomp test process number
@@ -1862,7 +1862,6 @@ function WTW-ParcompSWfallback
                 $_.error = $CheckProcessNumberFlag.error
             }
         }
-        #>
     }
 
     # Operation: heartbeat, disable, upgrade
