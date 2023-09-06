@@ -70,7 +70,6 @@ try {
         [System.Array]$ParcompCompressType = ("Compress", "deCompress")
         [System.Array]$ParcompCompressionType = ("dynamic")
         [System.Array]$ParcompCompressionLevel = (1)
-        [System.Array]$ParcompChunk = (8, 64, 128)
         [System.Array]$ParcompBlock = (4096)
         [System.Array]$ParcompThread = (8)
         [System.Array]$ParcompIteration = (200)
@@ -114,6 +113,9 @@ try {
         if ([String]::IsNullOrEmpty($runTestCase)) {
             if ($LocationInfo.UQMode) {
                 $ParcompProvider += "qatlz4"
+                [System.Array]$ParcompChunk = (8, 64)
+            } else {
+                [System.Array]$ParcompChunk = (8, 64, 128)
             }
         }
     }

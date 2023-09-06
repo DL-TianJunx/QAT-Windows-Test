@@ -69,7 +69,6 @@ try {
         [System.Array]$ParcompProvider = ("qat")
         [System.Array]$ParcompCompressType = ("Compress", "deCompress")
         [System.Array]$ParcompCompressionLevel = (1)
-        [System.Array]$ParcompChunk = (256)
         [System.Array]$ParcompBlock = (1024, 2048, 4096, 8192)
         [System.Array]$ParcompThread = (8)
         [System.Array]$ParcompIteration = (1, 200)
@@ -111,6 +110,9 @@ try {
         if ([String]::IsNullOrEmpty($runTestCase)) {
             if ($LocationInfo.UQMode) {
                 $ParcompProvider += "qatlz4"
+                [System.Array]$ParcompChunk = (64)
+            } else {
+                [System.Array]$ParcompChunk = (256)
             }
         }
     }

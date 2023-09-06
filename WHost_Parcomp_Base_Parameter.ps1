@@ -112,9 +112,11 @@ try {
         if ([String]::IsNullOrEmpty($runTestCase)) {
             if ($LocationInfo.UQMode) {
                 $ParcompProvider += "qatlz4"
+                [System.Array]$ParcompChunk = (32, 64)
+            } else {
+                [System.Array]$ParcompChunk = (64, 512)
             }
 
-            [System.Array]$ParcompChunk = (64, 512)
             [System.Array]$ParcompCompressionLevel = (1, 2)
             [System.Array]$ParcompCompressionType = ("dynamic")
         }

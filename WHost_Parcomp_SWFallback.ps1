@@ -70,7 +70,6 @@ try {
         [System.Array]$AllTestType.Operation = ("heartbeat", "disable")
         [System.Array]$ParcompCompressionType = ("dynamic")
         [System.Array]$ParcompCompressionLevel = (1)
-        [System.Array]$ParcompChunk = (256)
         [System.Array]$ParcompBlock = (4096)
         [System.Array]$ParcompThread = (8)
         [System.Array]$ParcompIteration = (200)
@@ -112,7 +111,10 @@ try {
         if ([String]::IsNullOrEmpty($runTestCase)) {
             if ($LocationInfo.UQMode) {
                 $ParcompProvider += "qatlz4"
+                [System.Array]$ParcompChunk = (64)
                 [System.Array]$AllTestType.Operation = ("heartbeat")
+            } else {
+                [System.Array]$ParcompChunk = (256)
             }
         }
     }
