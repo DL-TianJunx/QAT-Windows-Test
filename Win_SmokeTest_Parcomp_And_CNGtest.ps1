@@ -268,7 +268,7 @@ try {
                     [System.Array]$ParcompCompressionType = ("dynamic")
                     [System.Array]$ParcompIteration = (10)
                     [System.Array]$ParcompThread = (1)
-                    [System.Array]$TestFileNameArray.Type = ("high", "calgary")
+                    [System.Array]$TestFileNameArray.Type = ("high", "calgary", "random")
                     [System.Array]$TestFileNameArray.Size = (200)
 
                     # Re-init for test type
