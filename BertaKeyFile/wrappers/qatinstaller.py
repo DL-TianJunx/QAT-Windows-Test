@@ -267,19 +267,10 @@ class QatInstaller(BuildInstaller):
         out, rc = self.invoke_pscommand(self.pspath, command, 500, shell=False)
         out = self.convert_ps_return(out, 'bool')
         if rc == 0:
-            if not out:
-                CopyFlag = True
-        else:
-            CopyFlag = True
-
-        if CopyFlag:
-            try:
-                log.info('Copy from Git fail, so change to copy tree')
-                if os.path.exists(self.QATTEST_DST):
-                    shutil.rmtree(self.QATTEST_DST)
-                shutil.copytree(self.QATTEST_SRC, self.QATTEST_DST)
-            except:
-                raise
+            if out:
+                log.info('Copy qat test script is completed')
+            else:
+                log.info('Copy qat test script is failed')
 
         return
 

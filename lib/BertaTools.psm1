@@ -73,17 +73,17 @@ function Berta-CopyTestDir
     $LocalIPProxy = "http://child-prc.intel.com:913"
     $RemoteTestDir = "https://github.com/cuiyanx/QAT-Windows-Test.git"
 
-    try {
-        if (Test-Path -Path $LocalTestDir) {
-            CD C:\
-            Remove-Item `
-                -Path $LocalTestDir `
-                -Recurse `
-                -Force `
-                -Confirm:$false `
-                -ErrorAction Stop | out-null
-        }
+    if (Test-Path -Path $LocalTestDir) {
+        CD C:\
+        Remove-Item `
+            -Path $LocalTestDir `
+            -Recurse `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
 
+    try {
         Invoke-Command -ScriptBlock {
             Param($LocalTestDir, $LocalIPProxy, $RemoteTestDir)
             CD C:\
@@ -101,6 +101,18 @@ function Berta-CopyTestDir
         } -ArgumentList $LocalTestDir, $LocalIPProxy, $RemoteTestDir | out-null
     } catch {
         Win-DebugTimestamp -output ("Git Error: {0}" -f $_)
+        Win-DebugTimestamp -output ("Git repo has been failed, change to copy test dir")
+
+        Copy-Item `
+            -Path $BertaENVInit.TestScriptPath `
+            -Destination $LocalTestDir `
+            -Recurse `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+
+    if (-not (Test-Path -Path $LocalTestDir)) {
         $ReturnValue = $false
     }
 

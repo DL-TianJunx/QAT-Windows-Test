@@ -270,6 +270,7 @@ $global:BertaENVInit = [hashtable] @{
     LinuxShell = [hashtable] @{
         SourcePath = "\\10.67.115.211\\mountBertaCTL\\LinuxShellCode"
     }
+    TestScriptPath = "\\10.67.115.211\\mountBertaCTL\\QatTestBerta"
 }
 
 $global:TestResultToBerta = [hashtable] @{
