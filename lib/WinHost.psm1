@@ -177,7 +177,7 @@ function WinHostErrorHandle
     #    -Copy tracelog file to 'BertaResultPath'
     if ($TestError -eq "process_timeout") {
         $ProcessNameArray = [System.Array] @("parcomp", "cngtest")
-        $ProcessNameArray ! ForEach-Object {
+        $ProcessNameArray | ForEach-Object {
             $ProcessError = $null
             $ProcessStatus = Get-Process -Name $_ `
                                          -ErrorAction SilentlyContinue `
