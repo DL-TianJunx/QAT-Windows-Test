@@ -70,8 +70,6 @@ function Berta-CopyTestDir
     $ReturnValue = $true
 
     $LocalTestDir = "C:\QatTestBerta"
-    $LocalIPProxy = "http://child-prc.intel.com:913"
-    $RemoteTestDir = "https://github.com/cuiyanx/QAT-Windows-Test.git"
 
     if (Test-Path -Path $LocalTestDir) {
         CD C:\
@@ -84,6 +82,9 @@ function Berta-CopyTestDir
     }
 
     try {
+        $LocalIPProxy = "http://child-prc.intel.com:913"
+        $RemoteTestDir = "https://github.com/cuiyanx/QAT-Windows-Test.git"
+
         Invoke-Command -ScriptBlock {
             Param($LocalTestDir, $LocalIPProxy, $RemoteTestDir)
             CD C:\
@@ -101,10 +102,11 @@ function Berta-CopyTestDir
         } -ArgumentList $LocalTestDir, $LocalIPProxy, $RemoteTestDir | out-null
     } catch {
         Win-DebugTimestamp -output ("Git Error: {0}" -f $_)
-        Win-DebugTimestamp -output ("Git repo has been failed, change to copy test dir")
+        Win-DebugTimestamp -output ("Git repo has been failed, change to copy test dir from backup path")
 
+        $RemoteTestDir = "{0}\\*" -f $BertaENVInit.TestScriptPath
         Copy-Item `
-            -Path $BertaENVInit.TestScriptPath `
+            -Path $RemoteTestDir `
             -Destination $LocalTestDir `
             -Recurse `
             -Force `
