@@ -479,6 +479,11 @@ function WBase-LocationInfoInit
     if ($LocationInfo.HVMode) {
         $LocationInfo.VF.DriverPath = Split-Path -Path $QatDriverFullPath.VF
         $LocationInfo.VF.DriverName = Split-Path -Path $QatDriverFullPath.VF -Leaf
+        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat")
+        $LocationInfo.PDBNameArray.Remote = [System.Array] @("IcpQat", "CfQat")
+    } else {
+        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat", "CfQat")
+        $LocationInfo.PDBNameArray.Remote = [System.Array] @()
     }
 
     if ($LocationInfo.IsWin) {
@@ -610,14 +615,6 @@ function WBase-LocationInfoInit
         -Force `
         -Confirm:$false `
         -ErrorAction Stop | out-null
-
-    if ($LocationInfo.HVMode) {
-        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat")
-        $LocationInfo.PDBNameArray.Remote = [System.Array] @("IcpQat", "CfQat")
-    } else {
-        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat", "CfQat")
-        $LocationInfo.PDBNameArray.Remote = [System.Array] @()
-    }
 
     # Start trace log tool
     UT-TraceLogStart -Remote $false | out-null
