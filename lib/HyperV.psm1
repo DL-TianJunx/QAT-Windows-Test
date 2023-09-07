@@ -107,35 +107,23 @@ function HV-PSSessionCreate
                           -Confirm:$false | out-null
             }
 
-            $RemoteIcpQatFileName = $TraceLogOpts.EtlFullPath.IcpQat
-            $RemoteCfQatFileName = $TraceLogOpts.EtlFullPath.CfQat
-
-            if (Invoke-Command -Session $Session -ScriptBlock {
-                    Param($RemoteIcpQatFileName)
-                    Test-Path -Path $RemoteIcpQatFileName
-                } -ArgumentList $RemoteIcpQatFileName) {
-                $Remote2HostIcpQatFile = "{0}\\dump_{1}_IcpQat_tracelog.etl" -f
+            $TraceLogOpts.FileNameArray | ForEach-Object {
+                $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_{3}.etl" -f
                     $LocationInfo.BertaResultPath,
+                    $_,
+                    $ParameterFileName,
                     $VMNameReal.split("_")[1]
-                Copy-Item -FromSession $Session `
-                          -Path $RemoteIcpQatFileName `
-                          -Destination $Remote2HostIcpQatFile `
-                          -Force `
-                          -Confirm:$false | out-null
-            }
-
-            if (Invoke-Command -Session $Session -ScriptBlock {
-                    Param($RemoteCfQatFileName)
-                    Test-Path -Path $RemoteCfQatFileName
-                } -ArgumentList $RemoteCfQatFileName) {
-                $Remote2HostCfQatFile = "{0}\\dump_{1}_CfQat_tracelog.etl" -f
-                    $LocationInfo.BertaResultPath,
-                    $VMNameReal.split("_")[1]
-                Copy-Item -FromSession $Session `
-                          -Path $RemoteCfQatFileName `
-                          -Destination $Remote2HostCfQatFile `
-                          -Force `
-                          -Confirm:$false | out-null
+                $RemoteEtlFile = $TraceLogOpts.EtlFullPath[$_]
+                if (Invoke-Command -Session $Session -ScriptBlock {
+                        Param($RemoteEtlFile)
+                        Test-Path -Path $RemoteEtlFile
+                    } -ArgumentList $RemoteEtlFile) {
+                    Copy-Item -FromSession $Session `
+                              -Path $RemoteEtlFile `
+                              -Destination $BertaEtlFile `
+                              -Force `
+                              -Confirm:$false | out-null
+                }
             }
         }
     }

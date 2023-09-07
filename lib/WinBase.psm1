@@ -600,17 +600,16 @@ function WBase-LocationInfoInit
         -Path $TraceLogOpts.PDBPath `
         -ItemType Directory | out-null
 
-    if (Test-Path -Path $TraceLogOpts.PDBDriverPath.Host.IcpQat) {
-        Copy-Item `
-            -Path $TraceLogOpts.PDBDriverPath.Host.IcpQat `
-            -Destination $TraceLogOpts.PDBFullPath.IcpQat | out-null
-    }
-
-    if (Test-Path -Path $TraceLogOpts.PDBDriverPath.Host.CfQat) {
-        Copy-Item `
-            -Path $TraceLogOpts.PDBDriverPath.Host.CfQat `
-            -Destination $TraceLogOpts.PDBFullPath.CfQat | out-null
-    }
+    $PDBIncludeFiles = @("*.pdb")
+    $PDBCopyPath = "{0}\\*" -f $LocalPFDriverPath
+    Copy-Item `
+        -Path $PDBCopyPath `
+        -Destination $TraceLogOpts.PDBPath `
+        -Include $PDBIncludeFiles `
+        -Recurse `
+        -Force `
+        -Confirm:$false `
+        -ErrorAction Stop | out-null
 
     # Start trace log tool
     UT-TraceLogStart -Remote $false | out-null

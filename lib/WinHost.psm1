@@ -156,11 +156,13 @@ function WinHostErrorHandle
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [array]$TestResult,
+        [string]$BertaResultPath,
 
-        [string]$IcpQatFileName = "C:\\STV-tmp\\tracelog_IcpQat",
+        [Parameter(Mandatory=$True)]
+        [string]$TestError,
 
-        [string]$CfQatFileName = "C:\\STV-tmp\\tracelog_CfQat",
+        [Parameter(Mandatory=$True)]
+        [string]$ParameterFileName,
 
         [bool]$Transfer = $false
     )
@@ -170,21 +172,45 @@ function WinHostErrorHandle
     if ($Transfer) {UT-TraceLogTransfer -Remote $false | out-null}
 
     # Handle:
+    #    -process_timeout
+    #    -BSOD_error
     #    -Copy tracelog file to 'BertaResultPath'
-    Win-DebugTimestamp -output ("Host: Copy tracelog etl files to 'BertaResultPath'")
-    $HostIcpQatFile = "{0}_host.etl" -f $IcpQatFileName
-    $HostCfQatFile = "{0}_host.etl" -f $CfQatFileName
-    $HostIcpQatFileName = $TraceLogOpts.EtlFullPath.IcpQat
-    $HostCfQatFileName = $TraceLogOpts.EtlFullPath.CfQat
+    if ($TestError -eq "process_timeout") {
+        $ProcessNameArray = [System.Array] @("parcomp", "cngtest")
+        $ProcessNameArray ! ForEach-Object {
+            $ProcessError = $null
+            $ProcessStatus = Get-Process -Name $_ `
+                                         -ErrorAction SilentlyContinue `
+                                         -ErrorVariable ProcessError
 
-    if (Test-Path -Path $HostIcpQatFileName) {
-        Copy-Item -Path $HostIcpQatFileName -Destination $HostIcpQatFile -Force -Confirm:$false | out-null
-        Get-Item -Path $HostIcpQatFileName | Remove-Item -Recurse
+            if ([String]::IsNullOrEmpty($ProcessError)) {
+                Stop-Process -Name $_ -Force
+            }
+        }
     }
 
-    if (Test-Path -Path $HostCfQatFileName) {
-        Copy-Item -Path $HostCfQatFileName -Destination $HostCfQatFile -Force -Confirm:$false | out-null
-        Get-Item -Path $HostCfQatFileName | Remove-Item -Recurse
+    if ($TestError -eq "BSOD_error") {
+        if (Test-Path -Path $SiteKeep.DumpFile) {
+            $Local2HostDumpFile = "{0}\\Dump_{1}_host.DMP" -f
+                $BertaResultPath,
+                $ParameterFileName
+            Copy-Item -Path $SiteKeep.DumpFile `
+                      -Destination $Local2HostDumpFile `
+                      -Force `
+                      -Confirm:$false | out-null
+
+            Get-Item -Path $Local2HostDumpFile | Remove-Item -Recurse
+        }
+    }
+
+    Win-DebugTimestamp -output ("Host: Copy tracelog etl files to 'BertaResultPath'")
+    $TraceLogOpts.FileNameArray | ForEach-Object {
+        $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_host.etl" -f $BertaResultPath, $_, $ParameterFileName
+        $LocalEtlFile = $TraceLogOpts.EtlFullPath[$_]
+        if (Test-Path -Path $LocalEtlFile) {
+            Copy-Item -Path $LocalEtlFile -Destination $BertaEtlFile -Force -Confirm:$false | out-null
+            Get-Item -Path $LocalEtlFile | Remove-Item -Recurse
+        }
     }
 }
 
@@ -625,38 +651,32 @@ function WinHost-ParcompBase
                 $CompressionProvider = $CompressProvider
             }
 
-            $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_chunk{3}" -f $BertaResultPath,
-                                                                                $CompressionType,
-                                                                                $CompressionProvider,
-                                                                                $Chunk
-
-            $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_chunk{3}" -f $BertaResultPath,
-                                                                              $CompressionType,
-                                                                              $CompressionProvider,
-                                                                              $Chunk
+            $ParameterFileName = "{0}_{1}_chunk{2}" -f
+                $CompressionType,
+                $CompressionProvider,
+                $Chunk
 
             if (!$deCompressFlag) {
-                $Remote2HostIcpQatFile = "{0}_level{1}" -f $Remote2HostIcpQatFile, $Level
-                $Remote2HostCfQatFile = "{0}_level{1}" -f $Remote2HostCfQatFile, $Level
+                $ParameterFileName = "{0}_level{1}" -f
+                    $ParameterFileName,
+                    $Level
             }
 
             if ($deCompressProvider -eq "qat") {
-                $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $QatCompressionType
-                $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $QatCompressionType
+                $ParameterFileName = "{0}_{1}" -f
+                    $ParameterFileName,
+                    $QatCompressionType
             }
         } elseif ($TestType -eq "Compat") {
-            $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_Compress_{1}_deCompress_{2}" -f $BertaResultPath,
-                                                                                           $CompressProvider,
-                                                                                           $deCompressProvider
-
-            $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_Compress_{1}_deCompress_{2}" -f $BertaResultPath,
-                                                                                         $CompressProvider,
-                                                                                         $deCompressProvider
+            $ParameterFileName = "Compress_{0}_deCompress_{1}" -f
+                $CompressProvider,
+                $deCompressProvider
         }
 
-        WinHostErrorHandle -TestResult $ReturnValue `
-                           -IcpQatFileName $Remote2HostIcpQatFile `
-                           -CfQatFileName $Remote2HostCfQatFile  | out-null
+        WinHostErrorHandle `
+            -TestError $ReturnValue.error `
+            -BertaResultPath $BertaResultPath `
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
@@ -812,79 +832,44 @@ function WinHost-ParcompPerformance
 
     # Handle all errors
     if (!$ReturnValue.result) {
+        if ($deCompressFlag) {
+            $CompressionType = "deCompress"
+            $CompressionProvider = $deCompressProvider
+        } else {
+            $CompressionType = "Compress"
+            $CompressionProvider = $CompressProvider
+        }
+
         if ($TestType -eq "Performance") {
-            if ($deCompressFlag) {
-                $CompressionType = "deCompress"
-                $CompressionProvider = $deCompressProvider
-            } else {
-                $CompressionType = "Compress"
-                $CompressionProvider = $CompressProvider
-            }
-
-            $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_{3}{4}_chunk{5}_blockSize{6}" -f $BertaResultPath,
-                                                                                                    $CompressionType,
-                                                                                                    $CompressionProvider,
-                                                                                                    $TestFileType,
-                                                                                                    $TestFileSize,
-                                                                                                    $Chunk,
-                                                                                                    $blockSize
-
-            $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_{3}{4}_chunk{5}_blockSize{6}" -f $BertaResultPath,
-                                                                                                  $CompressionType,
-                                                                                                  $CompressionProvider,
-                                                                                                  $TestFileType,
-                                                                                                  $TestFileSize,
-                                                                                                  $Chunk,
-                                                                                                  $blockSize
-
-            $Remote2HostDumpFile = "{0}\\dump_{1}_{2}_{3}{4}_chunk{5}_blockSize{6}" -f $BertaResultPath,
-                                                                                       $CompressionType,
-                                                                                       $CompressionProvider,
-                                                                                       $TestFileType,
-                                                                                       $TestFileSize,
-                                                                                       $Chunk,
-                                                                                       $blockSize
+            $ParameterFileName = "{0}_{1}_{2}{3}_chunk{4}_blockSize{5}" -f
+                $CompressionType,
+                $CompressionProvider,
+                $TestFileType,
+                $TestFileSize,
+                $Chunk,
+                $blockSize
         } elseif ($TestType -eq "Parameter") {
-            $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_threads{3}_iterations{4}_chunk{5}_blockSize{6}" -f $BertaResultPath,
-                                                                                                                      $CompressionType,
-                                                                                                                      $CompressionProvider,
-                                                                                                                      $numThreads,
-                                                                                                                      $numIterations,
-                                                                                                                      $Chunk,
-                                                                                                                      $blockSize
-
-            $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_threads{3}_iterations{4}_chunk{5}_blockSize{6}" -f $BertaResultPath,
-                                                                                                                    $CompressionType,
-                                                                                                                    $CompressionProvider,
-                                                                                                                    $numThreads,
-                                                                                                                    $numIterations,
-                                                                                                                    $Chunk,
-                                                                                                                    $blockSize
-
-            $Remote2HostDumpFile = "{0}\\dump_{1}_{2}_threads{3}_iterations{4}_chunk{5}_blockSize{6}" -f $BertaResultPath,
-                                                                                                         $CompressionType,
-                                                                                                         $CompressionProvider,
-                                                                                                         $numThreads,
-                                                                                                         $numIterations,
-                                                                                                         $Chunk,
-                                                                                                         $blockSize
+            $ParameterFileName = "{0}_{1}_threads{2}_iterations{3}_chunk{4}_blockSize{5}" -f
+                $CompressionType,
+                $CompressionProvider,
+                $numThreads,
+                $numIterations,
+                $Chunk,
+                $blockSize
         }
 
         if (!$deCompressFlag) {
-            $Remote2HostIcpQatFile = "{0}_level{1}" -f $Remote2HostIcpQatFile, $Level
-            $Remote2HostCfQatFile = "{0}_level{1}" -f $Remote2HostCfQatFile, $Level
-            $Remote2HostDumpFile = "{0}_level{1}" -f $Remote2HostDumpFile, $Level
+            $ParameterFileName = "{0}_level{1}" -f $ParameterFileName, $Level
         }
 
         if ($deCompressProvider -eq "qat") {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $QatCompressionType
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $QatCompressionType
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $QatCompressionType
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $QatCompressionType
         }
 
-        WinHostErrorHandle -TestResult $ReturnValue `
-                           -IcpQatFileName $Remote2HostIcpQatFile `
-                           -CfQatFileName $Remote2HostCfQatFile  | out-null
+        WinHostErrorHandle `
+            -TestError $ReturnValue.error `
+            -BertaResultPath $BertaResultPath `
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
@@ -1164,24 +1149,15 @@ function WinHost-ParcompSWfallback
 
     # Handle all errors
     if (!$ReturnValue.result) {
-        $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                       $CompressType,
-                                                                       $CompressProvider,
-                                                                       $TestType
+        $ParameterFileName = "{0}_{1}_{2}" -f
+            $CompressType,
+            $CompressProvider,
+            $TestType
 
-        $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                     $CompressType,
-                                                                     $CompressProvider,
-                                                                     $TestType
-
-        $Remote2HostDumpFile = "{0}\\dump_{1}_{2}_{3}" -f $BertaResultPath,
-                                                          $CompressType,
-                                                          $CompressProvider,
-                                                          $TestType
-
-        WinHostErrorHandle -TestResult $ReturnValue `
-                           -IcpQatFileName $Remote2HostIcpQatFile `
-                           -CfQatFileName $Remote2HostCfQatFile | out-null
+        WinHostErrorHandle `
+            -TestError $ReturnValue.error `
+            -BertaResultPath $BertaResultPath `
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
@@ -1273,40 +1249,25 @@ function WinHost-CNGTestBase
 
     # Handle all errors
     if (!$ReturnValue.result) {
-        $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                       $provider,
-                                                                       $algo,
-                                                                       $operation
-
-        $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                     $provider,
-                                                                     $algo,
-                                                                     $operation
-
-        $Remote2HostDumpFile = "{0}\\dump_{1}_{2}_{3}" -f $BertaResultPath,
-                                                          $provider,
-                                                          $algo,
-                                                          $operation
+        $ParameterFileName = "{0}_{1}_{2}" -f
+            $provider,
+            $algo,
+            $operation
 
         if (($algo -eq "ecdsa") -and ($algo -eq "ecdh")) {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $ecccurve
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $ecccurve
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $ecccurve
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $ecccurve
         } else {
-            $Remote2HostIcpQatFile = "{0}_keyLength{1}" -f $Remote2HostIcpQatFile, $keyLength
-            $Remote2HostCfQatFile = "{0}_keyLength{1}" -f $Remote2HostCfQatFile, $keyLength
-            $Remote2HostDumpFile = "{0}_keyLength{1}" -f $Remote2HostDumpFile, $keyLength
+            $ParameterFileName = "{0}_keyLength{1}" -f $ParameterFileName, $keyLength
         }
 
         if ($algo -eq "rsa") {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $padding
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $padding
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $padding
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $padding
         }
 
-        WinHostErrorHandle -TestResult $ReturnValue `
-                           -IcpQatFileName $Remote2HostIcpQatFile `
-                           -CfQatFileName $Remote2HostCfQatFile  | out-null
+        WinHostErrorHandle `
+            -TestError $ReturnValue.error `
+            -BertaResultPath $BertaResultPath `
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
@@ -1400,40 +1361,25 @@ function WinHost-CNGTestPerformance
 
     # Handle all errors
     if (!$ReturnValue.result) {
-        $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                       $provider,
-                                                                       $algo,
-                                                                       $operation
-
-        $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                     $provider,
-                                                                     $algo,
-                                                                     $operation
-
-        $Remote2HostDumpFile = "{0}\\dump_{1}_{2}_{3}" -f $BertaResultPath,
-                                                          $provider,
-                                                          $algo,
-                                                          $operation
+        $ParameterFileName = "{0}_{1}_{2}" -f
+            $provider,
+            $algo,
+            $operation
 
         if (($algo -eq "ecdsa") -and ($algo -eq "ecdh")) {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $ecccurve
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $ecccurve
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $ecccurve
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $ecccurve
         } else {
-            $Remote2HostIcpQatFile = "{0}_keyLength{1}" -f $Remote2HostIcpQatFile, $keyLength
-            $Remote2HostCfQatFile = "{0}_keyLength{1}" -f $Remote2HostCfQatFile, $keyLength
-            $Remote2HostDumpFile = "{0}_keyLength{1}" -f $Remote2HostDumpFile, $keyLength
+            $ParameterFileName = "{0}_keyLength{1}" -f $ParameterFileName, $keyLength
         }
 
         if ($algo -eq "rsa") {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $padding
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $padding
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $padding
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $padding
         }
 
-        WinHostErrorHandle -TestResult $ReturnValue `
-                           -IcpQatFileName $Remote2HostIcpQatFile `
-                           -CfQatFileName $Remote2HostCfQatFile  | out-null
+        WinHostErrorHandle `
+            -TestError $ReturnValue.error `
+            -BertaResultPath $BertaResultPath `
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
@@ -1578,44 +1524,27 @@ function WinHost-CNGTestSWfallback
 
     # Handle all errors
     if (!$ReturnValue.result) {
-        $Remote2HostIcpQatFile = "{0}\\tracelog_IcpQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                       $provider,
-                                                                       $algo,
-                                                                       $operation
-
-        $Remote2HostCfQatFile = "{0}\\tracelog_CfQat_{1}_{2}_{3}" -f $BertaResultPath,
-                                                                     $provider,
-                                                                     $algo,
-                                                                     $operation
-
-        $Remote2HostDumpFile = "{0}\\dump_{1}_{2}_{3}" -f $BertaResultPath,
-                                                          $provider,
-                                                          $algo,
-                                                          $operation
+        $ParameterFileName = "{0}_{1}_{2}" -f
+            $provider,
+            $algo,
+            $operation
 
         if (($algo -eq "ecdsa") -and ($algo -eq "ecdh")) {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $ecccurve
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $ecccurve
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $ecccurve
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $ecccurve
         } else {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $keyLength
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $keyLength
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $keyLength
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $keyLength
         }
 
         if ($algo -eq "rsa") {
-            $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $padding
-            $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $padding
-            $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $padding
+            $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $padding
         }
 
-        $Remote2HostIcpQatFile = "{0}_{1}" -f $Remote2HostIcpQatFile, $TestType
-        $Remote2HostCfQatFile = "{0}_{1}" -f $Remote2HostCfQatFile, $TestType
-        $Remote2HostDumpFile = "{0}_{1}" -f $Remote2HostDumpFile, $TestType
+        $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $TestType
 
-        WinHostErrorHandle -TestResult $ReturnValue `
-                           -IcpQatFileName $Remote2HostIcpQatFile `
-                           -CfQatFileName $Remote2HostCfQatFile  | out-null
+        WinHostErrorHandle `
+            -TestError $ReturnValue.error `
+            -BertaResultPath $BertaResultPath `
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
