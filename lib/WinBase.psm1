@@ -152,7 +152,6 @@ function WBase-WriteResultCsv
     }
 }
 
-
 function WBase-CompareTestResult
 {
     Param(
@@ -483,7 +482,7 @@ function WBase-LocationInfoInit
         $LocationInfo.PDBNameArray.Remote = [System.Array] @("IcpQat", "CfQat")
     } else {
         $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat", "CfQat")
-        $LocationInfo.PDBNameArray.Remote = [System.Array] @()
+        $LocationInfo.PDBNameArray.Remote = $null
     }
 
     if ($LocationInfo.IsWin) {
