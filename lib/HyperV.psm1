@@ -107,7 +107,7 @@ function HV-PSSessionCreate
                           -Confirm:$false | out-null
             }
 
-            $TraceLogOpts.FileNameArray | ForEach-Object {
+            $LocationInfo.PDBNameArray.Remote | ForEach-Object {
                 $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_{3}.etl" -f
                     $LocationInfo.BertaResultPath,
                     $_,

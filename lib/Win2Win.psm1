@@ -632,7 +632,7 @@ function WTWRemoteErrorHandle
             }
 
             Win-DebugTimestamp -output ("{0}: Copy tracelog etl files to 'BertaResultPath'" -f $PSSessionName)
-            $TraceLogOpts.FileNameArray | ForEach-Object {
+            $LocationInfo.PDBNameArray.Remote | ForEach-Object {
                 $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_{3}.etl" -f
                     $BertaResultPath,
                     $_,

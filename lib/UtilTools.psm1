@@ -9,17 +9,14 @@ function UT-TraceLogStart
         [object]$Session = $null
     )
 
-    $TraceLogCheckFlags = [System.Array] @()
-    $TraceLogCheckFlags += "IcpQat"
-
     if ($Remote) {
         $LogKeyWord = $Session.Name
         $TraceLogType = "Remote"
-        $TraceLogCheckFlags += "CfQat"
+        $TraceLogCheckFlags = $LocationInfo.PDBNameArray.Remote
     } else {
         $LogKeyWord = "Host"
         $TraceLogType = "Host"
-        if (-not $LocationInfo.HVMode) {$TraceLogCheckFlags += "CfQat"}
+        $TraceLogCheckFlags = $LocationInfo.PDBNameArray.Host
     }
 
     Win-DebugTimestamp -output ("{0}: Start tracelog tool..." -f $LogKeyWord)
@@ -144,17 +141,14 @@ function UT-TraceLogStop
         [object]$Session = $null
     )
 
-    $TraceLogCheckFlags = [System.Array] @()
-    $TraceLogCheckFlags += "IcpQat"
-
     if ($Remote) {
         $LogKeyWord = $Session.Name
         $TraceLogType = "Remote"
-        $TraceLogCheckFlags += "CfQat"
+        $TraceLogCheckFlags = $LocationInfo.PDBNameArray.Remote
     } else {
         $LogKeyWord = "Host"
         $TraceLogType = "Host"
-        if (-not $LocationInfo.HVMode) {$TraceLogCheckFlags += "CfQat"}
+        $TraceLogCheckFlags = $LocationInfo.PDBNameArray.Host
     }
 
     Win-DebugTimestamp -output ("{0}: Stop tracelog tool..." -f $LogKeyWord)
@@ -233,17 +227,14 @@ function UT-TraceLogTransfer
         [object]$Session = $null
     )
 
-    $TraceLogCheckFlags = [System.Array] @()
-    $TraceLogCheckFlags += "IcpQat"
-
     if ($Remote) {
         $LogKeyWord = $Session.Name
         $TraceLogType = "Remote"
-        $TraceLogCheckFlags += "CfQat"
+        $TraceLogCheckFlags = $LocationInfo.PDBNameArray.Remote
     } else {
         $LogKeyWord = "Host"
         $TraceLogType = "Host"
-        if (-not $LocationInfo.HVMode) {$TraceLogCheckFlags += "CfQat"}
+        $TraceLogCheckFlags = $LocationInfo.PDBNameArray.Host
     }
 
     Win-DebugTimestamp -output ("{0}: Transfer events to log..." -f $LogKeyWord)

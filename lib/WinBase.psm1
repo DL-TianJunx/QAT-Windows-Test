@@ -611,6 +611,14 @@ function WBase-LocationInfoInit
         -Confirm:$false `
         -ErrorAction Stop | out-null
 
+    if ($LocationInfo.HVMode) {
+        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat")
+        $LocationInfo.PDBNameArray.Remote = [System.Array] @("IcpQat", "CfQat")
+    } else {
+        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat", "CfQat")
+        $LocationInfo.PDBNameArray.Remote = [System.Array] @()
+    }
+
     # Start trace log tool
     UT-TraceLogStart -Remote $false | out-null
 
@@ -635,6 +643,8 @@ function WBase-LocationInfoInit
     Win-DebugTimestamp -output ("          IcpQatName : {0}" -f $LocationInfo.IcpQatName)
     Win-DebugTimestamp -output ("   WriteLogToConsole : {0}" -f $LocationInfo.WriteLogToConsole)
     Win-DebugTimestamp -output ("      WriteLogToFile : {0}" -f $LocationInfo.WriteLogToFile)
+    Win-DebugTimestamp -output ("  PDBNameArrayRemote : {0}" -f $LocationInfo.PDBNameArray.Remote)
+    Win-DebugTimestamp -output ("    PDBNameArrayHost : {0}" -f $LocationInfo.PDBNameArray.Host)
 }
 
 function WBase-GetDriverPath

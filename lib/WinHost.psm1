@@ -204,7 +204,7 @@ function WinHostErrorHandle
     }
 
     Win-DebugTimestamp -output ("Host: Copy tracelog etl files to 'BertaResultPath'")
-    $TraceLogOpts.FileNameArray | ForEach-Object {
+    $LocationInfo.PDBNameArray.Host | ForEach-Object {
         $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_host.etl" -f $BertaResultPath, $_, $ParameterFileName
         $LocalEtlFile = $TraceLogOpts.EtlFullPath[$_]
         if (Test-Path -Path $LocalEtlFile) {

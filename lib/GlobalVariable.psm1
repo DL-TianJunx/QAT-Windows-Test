@@ -64,7 +64,6 @@ $global:DriverVerifierArgs = [hashtable] @{
 
 # About trace log tool
 $global:TraceLogOpts = [hashtable] @{
-    FileNameArray = [System.Array] @("IcpQat", "CfQat")
     Guid = [hashtable] @{
         IcpQat = "#f1057c32-3432-43ee-a282-c8a7086d25d9"
         CfQat = "#9b523b97-ac34-4e88-9a9d-fe16d4c9fddb"
@@ -353,6 +352,10 @@ $global:LocationInfo = [hashtable] @{
         Memory = $null
         CPU = 0
         HyperVGeneration = 0
+    }
+    PDBNameArray = [hashtable] @{
+        Host = [System.Array] @()
+        Remote = [System.Array] @()
     }
 }
 
