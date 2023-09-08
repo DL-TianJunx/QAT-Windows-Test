@@ -117,14 +117,11 @@ function WTW-ENVInit
             -StopFlag $false `
             -TurnOff $false `
             -StartFlag $true `
-            -WaitFlag $false `
-            -SessionFlag $false | out-null
-
-        Start-Sleep -Seconds 60
+            -WaitFlag $true `
+            -SessionFlag $true | out-null
     }
 
     # Copy Utils and qat windows driver
-    $RestartVMFlag = $false
     $VMNameList | ForEach-Object {
         $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
         $PSSessionName = ("Session_{0}" -f $_)
@@ -242,6 +239,7 @@ function WTW-ENVInit
     }
 
     # Check and set Test mode and Debug mode and driver verifier
+    $RestartVMFlag = $false
     $VMNameList | ForEach-Object {
         $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
         $PSSessionName = ("Session_{0}" -f $_)
@@ -291,11 +289,18 @@ function WTW-ENVInit
 
             $RestartVMFlag = $true
         }
-
-        if ($RestartVMFlag) {HV-RestartVMSoft -Session $Session}
     }
 
-    if ($RestartVMFlag) {Start-Sleep -Seconds 60}
+    if ($RestartVMFlag) {
+        # reStart VMs
+        WTWRestartVMs `
+            -VMNameList $VMNameList `
+            -StopFlag $true `
+            -TurnOff $false `
+            -StartFlag $true `
+            -WaitFlag $true `
+            -SessionFlag $true | out-null
+    }
 
     if ($InitVM) {
         # Install qat driver on VMs
