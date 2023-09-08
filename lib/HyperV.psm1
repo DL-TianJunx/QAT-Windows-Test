@@ -270,7 +270,7 @@ function HV-VMVFConfigInit
         $LocationInfo.VF.Number = [int]($HostVFs.Substring(0, $HostVFs.Length - 2))
         $LocationInfo.VM.OS = ($VMVFOSConfig.split("_")[2]).split(".")[0]
         $LocationInfo.VM.CPU = $LocationInfo.VF.Number
-        if ($LocationInfo.VM.CPU -le 8) {$LocationInfo.VM.CPU = 8}
+        if ($LocationInfo.VM.CPU -le 16) {$LocationInfo.VM.CPU = 16}
         $LocationInfo.VM.HyperVGeneration = 1
 
         $LocalMemory = [int]((Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory /1gb)
