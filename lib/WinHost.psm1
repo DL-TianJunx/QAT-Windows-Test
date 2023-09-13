@@ -1445,6 +1445,8 @@ function WinHost-CNGTestSWfallback
                                    -numIter $numIter `
                                    -TestPathName $TestPathName
 
+    Start-Sleep -Seconds 10
+
     # Check CNGTest test process number
     $CheckProcessNumberFlag = WBase-CheckProcessNumber -ProcessName "cngtest"
     if ($ReturnValue.result) {

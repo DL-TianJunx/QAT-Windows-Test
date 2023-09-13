@@ -2491,6 +2491,8 @@ function WTW-CNGTestSWfallback
                                        -numIter $numIter `
                                        -TestPathName $TestPathName
 
+        Start-Sleep -Seconds 10
+
         # Check cngtest test process number
         $CheckProcessNumberFlag = WBase-CheckProcessNumber -ProcessName "cngtest" -Session $Session
         $CNGTestResultsList | ForEach-Object {
