@@ -12,6 +12,8 @@ Param(
 
     [bool]$DebugMode = $false,
 
+    [bool]$FailToStop = $false,
+
     [string]$runTestCase = $null,
 
     [string]$DriverPath = "C:\\cy-work\\qat_driver\\",
@@ -222,6 +224,10 @@ try {
                         $SWFallbackTestResult.result = $TestResultToBerta.Pass
                     } else {
                         $SWFallbackTestResult.result = $TestResultToBerta.Fail
+
+                        if ($FailToStop) {
+                            throw ("If test caes is failed, then stop testing.")
+                        }
                     }
 
                     $TestCaseResultsList = [hashtable] @{

@@ -12,6 +12,8 @@ Param(
 
     [bool]$DebugMode = $false,
 
+    [bool]$FailToStop = $false,
+
     [string]$DriverPath = "C:\\cy-work\\qat_driver\\",
 
     [string]$ResultFile = "result.log"
@@ -139,6 +141,10 @@ try {
                     $TestResultList[$InstallerType]["result"] = $TestResultToBerta.Pass
                 } else {
                     $TestResultList[$InstallerType]["result"] = $TestResultToBerta.Fail
+
+                    if ($FailToStop) {
+                        throw ("If test caes is failed, then stop testing.")
+                    }
                 }
 
                 $LocationInfo.TestCaseName = $testName

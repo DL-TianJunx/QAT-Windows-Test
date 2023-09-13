@@ -18,6 +18,8 @@ Param(
 
     [string]$runTestCase = $null,
 
+    [bool]$FailToStop = $false,
+
     [string]$DriverPath = "C:\\cy-work\\qat_driver\\",
 
     [string]$ResultFile = "result.log"
@@ -243,6 +245,10 @@ try {
                         $totalResult = $TestResultToBerta.Pass
                     } else {
                         $totalResult = $TestResultToBerta.Fail
+
+                        if ($FailToStop) {
+                            throw ("If test caes is failed, then stop testing.")
+                        }
                     }
 
                     $TestCaseResultsList = [hashtable] @{

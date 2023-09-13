@@ -12,6 +12,8 @@ Param(
 
     [bool]$DebugMode = $false,
 
+    [bool]$FailToStop = $false,
+
     [string]$runTestCase = $null,
 
     [string]$DriverPath = "C:\\cy-work\\qat_driver\\",
@@ -221,6 +223,10 @@ try {
                     $PerformanceTestResult.result = $TestResultToBerta.Pass
                 } else {
                     $PerformanceTestResult.result = $TestResultToBerta.Fail
+
+                    if ($FailToStop) {
+                        throw ("If test caes is failed, then stop testing.")
+                    }
                 }
 
                 $TestCaseResultsList = [hashtable] @{

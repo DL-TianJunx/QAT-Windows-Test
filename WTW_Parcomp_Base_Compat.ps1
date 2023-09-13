@@ -16,6 +16,8 @@ Param(
 
     [bool]$DebugMode = $false,
 
+    [bool]$FailToStop = $false,
+
     [string]$DriverPath = "C:\\cy-work\\qat_driver\\",
 
     [string]$ResultFile = "result.log"
@@ -211,6 +213,10 @@ try {
                         $ParcompBaseTestResult.result = $TestResultToBerta.Pass
                     } else {
                         $ParcompBaseTestResult.result = $TestResultToBerta.Fail
+
+                        if ($FailToStop) {
+                            throw ("If test caes is failed, then stop testing.")
+                        }
                     }
 
                     $TestCaseResultsList = [hashtable] @{

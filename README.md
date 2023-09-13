@@ -51,6 +51,7 @@ or
 -TestMode             [option] '$true', disable and enable the Test mode.
 -VerifierMode         [option] '$true', disable and enable the driver verifier, the default value is `$false` for performance test.
 -DebugMode            [option] '$false', disable and enable the Debug mode.
+-FailToStop           [option] '$false', disable and enable the stop the test if test case is failed.
 -runTestCase          [option] '$null', run single test case.
 -DriverPath           [option] 'C:\\cy-work\\qat_driver\\', the path of QAT driver.
 -ResultFile           [option] 'result.log', the file of test result.
