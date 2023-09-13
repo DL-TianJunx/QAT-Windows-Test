@@ -119,6 +119,7 @@ try {
                     $TestResult.result = $TestResultToBerta.Fail
                 }
 
+                $LocationInfo.TestCaseName = $testName
                 $TestCaseResultsList = [hashtable] @{
                     tc = $testName
                     s = $TestResult.result

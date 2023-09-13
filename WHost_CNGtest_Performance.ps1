@@ -172,6 +172,7 @@ try {
                     -ResultFile $CompareFile
             } else {
                 Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
+                $LocationInfo.TestCaseName = $testName
 
                 $totalOps = 0
                 $totalResult = $true

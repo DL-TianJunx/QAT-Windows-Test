@@ -141,6 +141,7 @@ try {
                     $TestResultList[$InstallerType]["result"] = $TestResultToBerta.Fail
                 }
 
+                $LocationInfo.TestCaseName = $testName
                 $TestCaseResultsList = [hashtable] @{
                     tc = $testName
                     s = $TestResultList[$InstallerType]["result"]

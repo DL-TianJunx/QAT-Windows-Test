@@ -141,6 +141,7 @@ try {
                         -ResultFile $CompareFile
                 } else {
                     Win-DebugTimestamp -output ("Start to run stress test > {0}" -f $Iteration)
+                    $LocationInfo.TestCaseName = $testName
 
                     $StressTestResult = WTW-Stress -RunParcomp $RunParcomp `
                                                    -RunCNGtest $RunCNGtest `

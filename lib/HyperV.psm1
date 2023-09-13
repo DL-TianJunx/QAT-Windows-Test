@@ -97,22 +97,28 @@ function HV-PSSessionCreate
                     Param($SiteKeep)
                     Test-Path -Path $SiteKeep.DumpFile
                 } -ArgumentList $SiteKeep) {
-                $Remote2HostDumpFile = "{0}\\dump_{1}.DMP" -f
+                $Remote2HostDumpFile = "{0}\\dump_{1}_{2}.DMP" -f
                     $LocationInfo.BertaResultPath,
-                    $VMNameReal.split("_")[1]
+                    $VMNameReal.split("_")[1],
+                    $LocationInfo.TestCaseName
                 Copy-Item -FromSession $Session `
                           -Path $SiteKeep.DumpFile `
                           -Destination $Remote2HostDumpFile `
                           -Force `
                           -Confirm:$false | out-null
+
+                Invoke-Command -Session $Session -ScriptBlock {
+                    Param($SiteKeep)
+                    Get-Item -Path $SiteKeep.DumpFile | Remove-Item -Recurse
+                } -ArgumentList $SiteKeep
             }
 
             $LocationInfo.PDBNameArray.Remote | ForEach-Object {
                 $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_{3}.etl" -f
                     $LocationInfo.BertaResultPath,
                     $_,
-                    $ParameterFileName,
-                    $VMNameReal.split("_")[1]
+                    $VMNameReal.split("_")[1],
+                    $LocationInfo.TestCaseName
                 $RemoteEtlFile = $TraceLogOpts.EtlFullPath[$_]
                 if (Invoke-Command -Session $Session -ScriptBlock {
                         Param($RemoteEtlFile)
@@ -123,6 +129,11 @@ function HV-PSSessionCreate
                               -Destination $BertaEtlFile `
                               -Force `
                               -Confirm:$false | out-null
+
+                    Invoke-Command -Session $Session -ScriptBlock {
+                        Param($RemoteEtlFile)
+                        Get-Item -Path $RemoteEtlFile | Remove-Item -Recurse
+                    } -ArgumentList $RemoteEtlFile
                 }
             }
         }

@@ -187,6 +187,8 @@ try {
                         -TestResult $TestCaseResultsList `
                         -ResultFile $CompareFile
                 } else {
+                    $LocationInfo.TestCaseName = $testName
+
                     $ParcompBaseTestResult = WTW-ParcompBase `
                         -deCompressFlag $deCompressFlag `
                         -CompressProvider $CompressProvider `

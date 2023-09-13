@@ -329,6 +329,7 @@ $global:LocationInfo = [hashtable] @{
     Socket = 0
     Socket2PF = 0
     PF2VF = 0
+    TestCaseName = $null
     PF = [hashtable] @{
         Number = 0
         PCI = [System.Array] @()

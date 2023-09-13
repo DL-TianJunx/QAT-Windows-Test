@@ -184,6 +184,7 @@ try {
                         -ResultFile $CompareFile
                 } else {
                     Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
+                    $LocationInfo.TestCaseName = $testName
 
                     $CNGTestResult = WTW-CNGTestBase `
                         -algo $TestCase.Algo `
