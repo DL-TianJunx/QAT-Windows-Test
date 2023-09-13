@@ -479,9 +479,9 @@ function WBase-LocationInfoInit
         $LocationInfo.VF.DriverPath = Split-Path -Path $QatDriverFullPath.VF
         $LocationInfo.VF.DriverName = Split-Path -Path $QatDriverFullPath.VF -Leaf
         $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat")
-        $LocationInfo.PDBNameArray.Remote = [System.Array] @("IcpQat", "CfQat")
+        $LocationInfo.PDBNameArray.Remote = [System.Array] @("IcpQat", "CfQat", "UCpmProv", "CpmBCrypt")
     } else {
-        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat", "CfQat")
+        $LocationInfo.PDBNameArray.Host = [System.Array] @("IcpQat", "CfQat", "UCpmProv", "CpmBCrypt")
         $LocationInfo.PDBNameArray.Remote = [System.Array] @()
     }
 

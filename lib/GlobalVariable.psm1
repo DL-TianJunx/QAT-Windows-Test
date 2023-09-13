@@ -67,6 +67,8 @@ $global:TraceLogOpts = [hashtable] @{
     Guid = [hashtable] @{
         IcpQat = "#f1057c32-3432-43ee-a282-c8a7086d25d9"
         CfQat = "#9b523b97-ac34-4e88-9a9d-fe16d4c9fddb"
+        UCpmProv = "#FD65D857-EDE5-4B88-B26E-E2DF244DE7E8"
+        CpmBCrypt = "#472dd868-0aae-4472-9887-cbf66a170738"
     }
     ExePath = "{0}\\tracelog.exe" -f $STVWinPath
     PDBExePath = "{0}\\tracepdb.exe" -f $STVWinPath
@@ -78,33 +80,47 @@ $global:TraceLogOpts = [hashtable] @{
         Host = [hashtable] @{
             IcpQat = "qatwin_host_icpqat"
             CfQat = "qatwin_host_cfqat"
+            UCpmProv = "qatwin_host_UCpmProv"
+            CpmBCrypt = "qatwin_host_CpmBCrypt"
         }
         Remote = [hashtable] @{
             IcpQat = "qatwin_remote_icpqat"
             CfQat = "qatwin_remote_cfqat"
+            UCpmProv = "qatwin_host_UCpmProv"
+            CpmBCrypt = "qatwin_host_CpmBCrypt"
         }
     }
     PDBDriverPath = [hashtable] @{
         Host = [hashtable] @{
             IcpQat = "{0}\\icp_qat4.pdb" -f $LocalPFDriverPath
             CfQat = "{0}\\CfQat.pdb" -f $LocalPFDriverPath
+            UCpmProv = "{0}\\UCpmProv.pdb" -f $LocalPFDriverPath
+            CpmBCrypt = "{0}\\CpmBCryptSample.pdb" -f $LocalPFDriverPath
         }
         Remote = [hashtable] @{
             IcpQat = "{0}\\icp_qat4.pdb" -f $LocalVFDriverPath
             CfQat = "{0}\\CfQat.pdb" -f $LocalVFDriverPath
+            UCpmProv = "{0}\\UCpmProv.pdb" -f $LocalVFDriverPath
+            CpmBCrypt = "{0}\\CpmBCryptSample.pdb" -f $LocalPFDriverPath
         }
     }
     PDBFullPath = [hashtable] @{
         IcpQat = "{0}\\TraceLog\\PDB\\icp_qat4.pdb" -f $STVWinPath
         CfQat = "{0}\\TraceLog\\PDB\\CfQat.pdb" -f $STVWinPath
+        UCpmProv = "{0}\\TraceLog\\PDB\\UCpmProv.pdb" -f $STVWinPath
+        CpmBCrypt = "{0}\\TraceLog\\PDB\\CpmBCryptSample.pdb" -f $STVWinPath
     }
     EtlFullPath = [hashtable] @{
         IcpQat = "{0}\\TraceLog\\TraceLog_icpqat.etl" -f $STVWinPath
         CfQat = "{0}\\TraceLog\\TraceLog_cfqat.etl" -f $STVWinPath
+        UCpmProv = "{0}\\TraceLog\\TraceLog_UCpmProv.etl" -f $STVWinPath
+        CpmBCrypt = "{0}\\TraceLog\\TraceLog_CpmBCrypt.etl" -f $STVWinPath
     }
     LogFullPath = [hashtable] @{
         IcpQat = "{0}\\TraceLog\\TraceLog_icpqat.log" -f $STVWinPath
         CfQat = "{0}\\TraceLog\\TraceLog_cfqat.log" -f $STVWinPath
+        UCpmProv = "{0}\\TraceLog\\TraceLog_UCpmProv.log" -f $STVWinPath
+        CpmBCrypt = "{0}\\TraceLog\\TraceLog_CpmBCrypt.log" -f $STVWinPath
     }
 }
 
