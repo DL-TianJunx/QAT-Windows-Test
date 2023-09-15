@@ -302,7 +302,7 @@ try {
 
                     if ($SmokeTestTestType -eq "Fallback") {
                         if ($SmokeTestTypesList[$SmokeTestModeType][$SmokeTestTestType].CNGTest.Flag) {
-                            [System.Array]$CNGTestIteration = (1000000)
+                            [System.Array]$CNGTestIteration = (5000000)
                             [System.Array]$CNGTestThread = (96)
                         }
 

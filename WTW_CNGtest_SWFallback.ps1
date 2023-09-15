@@ -76,7 +76,7 @@ try {
         [System.Array]$CNGTestKeyLength = (4096)
         [System.Array]$CNGTestEcccurve = ("nistP256", "curve25519")
         [System.Array]$CNGTestThread = (96)
-        [System.Array]$CNGTestIteration = (1000000)
+        [System.Array]$CNGTestIteration = (5000000)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
         [System.Array]$CNGTestProvider = $AnalyzeResult.CNGTest.Provider
