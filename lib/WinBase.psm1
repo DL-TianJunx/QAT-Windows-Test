@@ -2633,7 +2633,7 @@ function WBase-HeartbeatQatDevice
                     }
                 }
 
-                Start-Sleep -Seconds 10
+                Start-Sleep -Seconds 30
             }
 
             Start-Sleep -Seconds 90

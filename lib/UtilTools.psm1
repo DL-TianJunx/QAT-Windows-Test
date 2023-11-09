@@ -348,8 +348,19 @@ function UT-TraceLogCheck
         $startQatDevice = "qat_dev{0} started" -f $Number
         $stopQatDevice = "qat_dev{0} stopped" -f $Number
 
-        if (-not ($TraceViewContent -match $startQatDevice)) {$ReturnValue = $false}
-        if (-not ($TraceViewContent -match $stopQatDevice)) {$ReturnValue = $false}
+        if ($TraceViewContent -match $stopQatDevice) {
+            Win-DebugTimestamp -output ("Qat device {0} is stopped" -f $Number)
+        } else {
+            Win-DebugTimestamp -output ("Qat device {0} is not stopped" -f $Number)
+            if ($ReturnValue) {$ReturnValue = $false}
+        }
+
+        if ($TraceViewContent -match $startQatDevice) {
+            Win-DebugTimestamp -output ("Qat device {0} is started" -f $Number)
+        } else {
+            Win-DebugTimestamp -output ("Qat device {0} is not started" -f $Number)
+            if ($ReturnValue) {$ReturnValue = $false}
+        }
     }
 
     return $ReturnValue
