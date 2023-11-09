@@ -248,7 +248,7 @@ function WBase-HostDeviceInit
         $LocationInfo.IcpQatName = "icp_qat"
         $LocationInfo.Socket2PF = 3
         $LocationInfo.PF2VF = 16
-        $PFNumber = $SocketNumber * $LocationInfo.Socket2PF
+        $PFNumber = $LocationInfo.Socket2PF
     } elseif ($LocationInfo.FriendlyName -eq "Intel(R) C4xxx Accelerator*") {
         $LocationInfo.QatType = "QAT18"
         $LocationInfo.IcpQatName = "icp_qat"
