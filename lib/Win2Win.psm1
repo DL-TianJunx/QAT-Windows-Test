@@ -659,15 +659,6 @@ function WTWRemoteErrorHandle
                         Get-Item -Path $RemoteEtlFile | Remove-Item -Recurse
                     } -ArgumentList $RemoteEtlFile | out-null
                 }
-
-                if ($ParameterFileName -match "heartbeat") {
-                    $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_host.etl" -f $BertaResultPath, $_, $ParameterFileName
-                    $LocalEtlFile = $TraceLogOpts.EtlFullPath[$_]
-                    if (Test-Path -Path $LocalEtlFile) {
-                        Copy-Item -Path $LocalEtlFile -Destination $BertaEtlFile -Force -Confirm:$false | out-null
-                        Get-Item -Path $LocalEtlFile | Remove-Item -Recurse
-                    }
-                }
             }
         }
     }
@@ -1997,17 +1988,19 @@ function WTW-ParcompSWfallback
         }
     }
 
-    # Collate return value
-    $testError = "|"
-    $FallbackTestResultsList | ForEach-Object {
-        if (!$_.result) {
-            $ReturnValue.result = $_.result
-            $testError = "{0}{1}->{2}|" -f $testError, $_.vm, $_.error
+    # Collate return value for all VMs
+    if ($ReturnValue.result) {
+        $testError = "|"
+        $FallbackTestResultsList | ForEach-Object {
+            if (!$_.result) {
+                $ReturnValue.result = $_.result
+                $testError = "{0}{1}->{2}|" -f $testError, $_.vm, $_.error
+            }
         }
-    }
 
-    if (!$ReturnValue.result) {
-        $ReturnValue.error = $testError
+        if (!$ReturnValue.result) {
+            $ReturnValue.error = $testError
+        }
     }
 
     # Run parcomp test after fallback test
@@ -2032,6 +2025,20 @@ function WTW-ParcompSWfallback
             $CompressType,
             $CompressProvider,
             $TestType
+
+        if ($ReturnValue.error -eq "heartbeat_failed") {
+            $LocationInfo.PDBNameArray.Host | ForEach-Object {
+                $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_host.etl" -f
+                    $BertaResultPath,
+                    $_,
+                    $ParameterFileName
+                $LocalEtlFile = $TraceLogOpts.EtlFullPath[$_]
+                if (Test-Path -Path $LocalEtlFile) {
+                    Copy-Item -Path $LocalEtlFile -Destination $BertaEtlFile -Force -Confirm:$false | out-null
+                    Get-Item -Path $LocalEtlFile | Remove-Item -Recurse
+                }
+            }
+        }
 
         WTWRemoteErrorHandle `
             -TestResultsList $FallbackTestResultsList `
@@ -2576,17 +2583,19 @@ function WTW-CNGTestSWfallback
         }
     }
 
-    # Collate return value
-    $testError = "|"
-    $CNGTestResultsList | ForEach-Object {
-        if (!$_.result) {
-            $ReturnValue.result = $_.result
-            $testError = "{0}{1}->{2}|" -f $testError, $_.vm, $_.error
+    # Collate return value for all VMs
+    if ($ReturnValue.result) {
+        $testError = "|"
+        $CNGTestResultsList | ForEach-Object {
+            if (!$_.result) {
+                $ReturnValue.result = $_.result
+                $testError = "{0}{1}->{2}|" -f $testError, $_.vm, $_.error
+            }
         }
-    }
 
-    if (!$ReturnValue.result) {
-        $ReturnValue.error = $testError
+        if (!$ReturnValue.result) {
+            $ReturnValue.error = $testError
+        }
     }
 
     # Run CNGTest after fallback test
@@ -2620,10 +2629,24 @@ function WTW-CNGTestSWfallback
 
         $ParameterFileName = "{0}_{1}" -f $ParameterFileName, $TestType
 
+        if ($ReturnValue.error -eq "heartbeat_failed") {
+            $LocationInfo.PDBNameArray.Host | ForEach-Object {
+                $BertaEtlFile = "{0}\\Tracelog_{1}_{2}_host.etl" -f
+                    $BertaResultPath,
+                    $_,
+                    $ParameterFileName
+                $LocalEtlFile = $TraceLogOpts.EtlFullPath[$_]
+                if (Test-Path -Path $LocalEtlFile) {
+                    Copy-Item -Path $LocalEtlFile -Destination $BertaEtlFile -Force -Confirm:$false | out-null
+                    Get-Item -Path $LocalEtlFile | Remove-Item -Recurse
+                }
+            }
+        }
+
         WTWRemoteErrorHandle `
             -TestResultsList $CNGTestResultsList `
             -BertaResultPath $BertaResultPath `
-            -ParameterFileName $ParameterFileName  | out-null
+            -ParameterFileName $ParameterFileName | out-null
     }
 
     return $ReturnValue
