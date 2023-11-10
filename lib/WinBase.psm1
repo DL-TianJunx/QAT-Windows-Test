@@ -2614,20 +2614,21 @@ function WBase-HeartbeatQatDevice
         for ($it = 0; $it -lt $HeartbeatTimes; $it++) {
             Win-DebugTimestamp -output ("The time of heartbeat qat device > {0}" -f ($it + 1))
             for ($i = 0; $i -lt $LocationInfo.PF.Number; $i++) {
+                Win-DebugTimestamp -output ("Query qat device > {0}" -f $i)
                 $AdfCtlArgs = ("query {0}" -f $i)
                 $AdfCtlOut = &$AdfCtlExe $AdfCtlArgs.split()
 
                 if ($AdfCtlOut.split() -contains "failed") {
+                    Win-DebugTimestamp -output ("Query qat device is failed > {0}" -f $AdfCtlOut)
                     continue
                 }
 
-                $AdfCtlArgs = ("heartbeat {0}" -f $i)
-
                 Win-DebugTimestamp -output ("Heartbeat qat device > {0}" -f $i)
+                $AdfCtlArgs = ("heartbeat {0}" -f $i)
                 $AdfCtlOut = &$AdfCtlExe $AdfCtlArgs.split()
 
                 if (($AdfCtlOut) -and ($AdfCtlOut.split() -contains "failed")) {
-                    Win-DebugTimestamp -output ("Heartbeat qat device is failed > {0} {1}" -f $AdfCtlExe, $AdfCtlArgs)
+                    Win-DebugTimestamp -output ("Heartbeat qat device is failed > {0}" -f $AdfCtlOut)
                     if ($ReturnValue) {
                         $ReturnValue = $false
                     }
