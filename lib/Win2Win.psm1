@@ -1756,27 +1756,6 @@ function WTW-ParcompSWfallback
                                                                                          $deCompressProvider)
 
         $ProcessCount = 0
-        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-            $ProcessCount += 1
-            $CompressTestResult = WBase-Parcomp -Side "remote" `
-                                                -VMNameSuffix $_ `
-                                                -deCompressFlag $false `
-                                                -CompressProvider $CompressProvider `
-                                                -deCompressProvider $deCompressProvider `
-                                                -QatCompressionType $QatCompressionType `
-                                                -Level $Level `
-                                                -Chunk $Chunk `
-                                                -blockSize $blockSize `
-                                                -numThreads $numThreads `
-                                                -numIterations $numIterations `
-                                                -ParcompType $ParcompType `
-                                                -runParcompType $runParcompType `
-                                                -TestPathName $CompressTestPath `
-                                                -TestFilefullPath $TestFilefullPath `
-                                                -TestFileType $TestFileType `
-                                                -TestFileSize $TestFileSize
-        }
-
         if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
             $ProcessCount += 1
             $deCompressTestResult = WBase-Parcomp -Side "remote" `
@@ -1796,6 +1775,27 @@ function WTW-ParcompSWfallback
                                                   -TestFilefullPath $TestFilefullPath `
                                                   -TestFileType $TestFileType `
                                                   -TestFileSize $TestFileSize
+        }
+
+        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+            $ProcessCount += 1
+            $CompressTestResult = WBase-Parcomp -Side "remote" `
+                                                -VMNameSuffix $_ `
+                                                -deCompressFlag $false `
+                                                -CompressProvider $CompressProvider `
+                                                -deCompressProvider $deCompressProvider `
+                                                -QatCompressionType $QatCompressionType `
+                                                -Level $Level `
+                                                -Chunk $Chunk `
+                                                -blockSize $blockSize `
+                                                -numThreads $numThreads `
+                                                -numIterations $numIterations `
+                                                -ParcompType $ParcompType `
+                                                -runParcompType $runParcompType `
+                                                -TestPathName $CompressTestPath `
+                                                -TestFilefullPath $TestFilefullPath `
+                                                -TestFileType $TestFileType `
+                                                -TestFileSize $TestFileSize
         }
 
         Start-Sleep -Seconds 10
@@ -1838,7 +1838,6 @@ function WTW-ParcompSWfallback
 
         Win-DebugTimestamp -output ("The upgrade operation > {0}" -f $upgradeStatus)
         if (!$upgradeStatus) {
-            Win-DebugTimestamp -output ("The upgrade operation is failed")
             $ReturnValue.result = $upgradeStatus
             $ReturnValue.error = "upgrade_failed"
         }
@@ -2535,7 +2534,6 @@ function WTW-CNGTestSWfallback
 
         Win-DebugTimestamp -output ("The upgrade operation > {0}" -f $upgradeStatus)
         if (!$upgradeStatus) {
-            Win-DebugTimestamp -output ("The upgrade operation is failed")
             $ReturnValue.result = $upgradeStatus
             $ReturnValue.error = "upgrade_failed"
         }

@@ -935,28 +935,6 @@ function WinHost-ParcompSWfallback
                                                                                       $deCompressProvider)
 
     $ProcessCount = 0
-    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-        $ProcessCount += 1
-        $CompressTestResult = WBase-Parcomp -Side "host" `
-                                            -deCompressFlag $false `
-                                            -CompressProvider $CompressProvider `
-                                            -deCompressProvider $deCompressProvider `
-                                            -QatCompressionType $QatCompressionType `
-                                            -Level $Level `
-                                            -Chunk $Chunk `
-                                            -blockSize $blockSize `
-                                            -numThreads $numThreads `
-                                            -numIterations $numIterations `
-                                            -ParcompType $ParcompType `
-                                            -runParcompType $runParcompType `
-                                            -TestPathName $CompressTestPath `
-                                            -TestFilefullPath $TestFilefullPath `
-                                            -TestFileType $TestFileType `
-                                            -TestFileSize $TestFileSize
-
-        Start-Sleep -Seconds 5
-    }
-
     if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
         $ProcessCount += 1
         $deCompressTestResult = WBase-Parcomp -Side "host" `
@@ -975,6 +953,28 @@ function WinHost-ParcompSWfallback
                                               -TestFilefullPath $TestFilefullPath `
                                               -TestFileType $TestFileType `
                                               -TestFileSize $TestFileSize
+
+        Start-Sleep -Seconds 5
+    }
+
+    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+        $ProcessCount += 1
+        $CompressTestResult = WBase-Parcomp -Side "host" `
+                                            -deCompressFlag $false `
+                                            -CompressProvider $CompressProvider `
+                                            -deCompressProvider $deCompressProvider `
+                                            -QatCompressionType $QatCompressionType `
+                                            -Level $Level `
+                                            -Chunk $Chunk `
+                                            -blockSize $blockSize `
+                                            -numThreads $numThreads `
+                                            -numIterations $numIterations `
+                                            -ParcompType $ParcompType `
+                                            -runParcompType $runParcompType `
+                                            -TestPathName $CompressTestPath `
+                                            -TestFilefullPath $TestFilefullPath `
+                                            -TestFileType $TestFileType `
+                                            -TestFileSize $TestFileSize
 
         Start-Sleep -Seconds 5
     }
@@ -1012,7 +1012,6 @@ function WinHost-ParcompSWfallback
 
             Win-DebugTimestamp -output ("The upgrade operation > {0}" -f $upgradeStatus)
             if (-not $upgradeStatus) {
-                Win-DebugTimestamp -output ("The upgrade operation is failed")
                 $ReturnValue.result = $upgradeStatus
                 $ReturnValue.error = "upgrade_failed"
             }
@@ -1480,7 +1479,6 @@ function WinHost-CNGTestSWfallback
 
             Win-DebugTimestamp -output ("The upgrade operation > {0}" -f $upgradeStatus)
             if (-not $upgradeStatus) {
-                Win-DebugTimestamp -output ("The upgrade operation is failed")
                 $ReturnValue.result = $upgradeStatus
                 $ReturnValue.error = "upgrade_failed"
             }
@@ -1507,8 +1505,10 @@ function WinHost-CNGTestSWfallback
         -Remote $false `
         -keyWords "Ops/s"
 
-    $ReturnValue.result = $CheckOutput.result
-    $ReturnValue.error = $CheckOutput.error
+    if ($ReturnValue.result) {
+        $ReturnValue.result = $CheckOutput.result
+        $ReturnValue.error = $CheckOutput.error
+    }
 
     # Run CNGTest after fallback test
     if ($ReturnValue.result) {
