@@ -4,7 +4,6 @@ if (!$QATTESTPATH) {
 }
 
 Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
-Import-Module $STVMainDll -Force -DisableNameChecking
 
 # About VMs
 function WTWRestartVMs
@@ -82,11 +81,14 @@ function WTWCreateVMs
 
 function WTWRemoveVMs
 {
-    $VMList = Get-VM
-    if (-not [String]::IsNullOrEmpty($VMList)) {
-        Foreach ($VM in $VMList) {
-            HV-RemoveVM -VMName $VM.Name | out-null
-        }
+    Param(
+        [Parameter(Mandatory=$True)]
+        [array]$VMNameList
+    )
+
+    $VMNameList | ForEach-Object {
+        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+        HV-RemoveVM -VMName $VMName | out-null
     }
 }
 
@@ -106,7 +108,7 @@ function WTW-ENVInit
 
     if ($InitVM) {
         # Remove VMs
-        WTWRemoveVMs | out-null
+        WTWRemoveVMs -VMNameList $VMNameList | out-null
 
         # Create VMs
         WTWCreateVMs -VMNameList $VMNameList | out-null
@@ -433,7 +435,7 @@ function WTW-ENVInit
 }
 
 # About base test
-function WTWRemoteCheckMD5
+function WTW-RemoteCheckMD5
 {
     Param(
         [Parameter(Mandatory=$True)]
@@ -520,7 +522,8 @@ function WTWRemoteCheckMD5
         Param($TestSourceFile)
         certutil -hashfile $TestSourceFile MD5
     } -ArgumentList $TestSourceFile
-    $TestSourceFileMD5 = ($TestSourceFileMD5).split("\n")[1]
+    $TestSourceFileMD5 = $TestSourceFileMD5[1]
+    #Win-DebugTimestamp -output ("{0}: {1} > {2}" -f $Session.Name, $TestSourceFile, $TestSourceFileMD5)
 
     if ($deCompressFlag) {
         ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
@@ -528,7 +531,8 @@ function WTWRemoteCheckMD5
                 Param($TestParcompOutFile)
                 certutil -hashfile $TestParcompOutFile MD5
             } -ArgumentList $TestParcompOutFile
-            $TestParcompOutFileMD5 = ($TestParcompOutFileMD5).split("\n")[1]
+            $TestParcompOutFileMD5 = $TestParcompOutFileMD5[1]
+            #Win-DebugTimestamp -output ("{0}: {1} > {2}" -f $Session.Name, $TestParcompOutFile, $TestParcompOutFileMD5)
             $TestParcompOutFileMD5List += $TestParcompOutFileMD5
         }
     } else {
@@ -550,7 +554,8 @@ function WTWRemoteCheckMD5
                 Param($TestParcompOutFile)
                 certutil -hashfile $TestParcompOutFile MD5
             } -ArgumentList $TestParcompOutFile
-            $TestParcompOutFileMD5 = ($TestParcompOutFileMD5).split("\n")[1]
+            $TestParcompOutFileMD5 = $TestParcompOutFileMD5[1]
+            #Win-DebugTimestamp -output ("{0}: {1} > {2}" -f $Session.Name, $TestParcompOutFile, $TestParcompOutFileMD5)
             $TestParcompOutFileMD5List += $TestParcompOutFileMD5
         }
     }
@@ -1291,7 +1296,7 @@ function WTW-ParcompBase
                             return
                         }
                     } else {
-                        $CheckMD5Result = WTWRemoteCheckMD5 -Session $Session `
+                        $CheckMD5Result = WTW-RemoteCheckMD5 -Session $Session `
                                                             -deCompressFlag $deCompressFlag `
                                                             -CompressProvider $CompressProvider `
                                                             -deCompressProvider $deCompressProvider `
@@ -1565,7 +1570,7 @@ function WTW-ParcompPerformance
                         $MD5MatchFlag = $true
 
                         # The parcomp operation is Compress, need to deCompress the output file and check the match
-                        $CheckMD5Result = WTWRemoteCheckMD5 -Session $Session `
+                        $CheckMD5Result = WTW-RemoteCheckMD5 -Session $Session `
                                                             -deCompressFlag $deCompressFlag `
                                                             -CompressProvider $CompressProvider `
                                                             -deCompressProvider $deCompressProvider `
@@ -1920,7 +1925,7 @@ function WTW-ParcompSWfallback
                     if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
                         Win-DebugTimestamp -output ("{0}: Double check the output file of fallback test (compress)" -f $PSSessionName)
                         $MD5MatchFlag = $true
-                        $CheckMD5Result = WTWRemoteCheckMD5 -Session $Session `
+                        $CheckMD5Result = WTW-RemoteCheckMD5 -Session $Session `
                                                             -deCompressFlag $false `
                                                             -CompressProvider $CompressProvider `
                                                             -deCompressProvider $deCompressProvider `
@@ -1952,7 +1957,7 @@ function WTW-ParcompSWfallback
                     if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
                         Win-DebugTimestamp -output ("{0}: Double check the output file of fallback test (decompress)" -f $PSSessionName)
                         $MD5MatchFlag = $true
-                        $CheckMD5Result = WTWRemoteCheckMD5 -Session $Session `
+                        $CheckMD5Result = WTW-RemoteCheckMD5 -Session $Session `
                                                             -deCompressFlag $true `
                                                             -CompressProvider $CompressProvider `
                                                             -deCompressProvider $deCompressProvider `

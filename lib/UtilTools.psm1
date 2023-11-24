@@ -496,7 +496,11 @@ function UT-CheckDriverVerifier
         }
     }
 
-    $ReturnValue = ($CheckFlag -eq $Verifier) ? $true : $false
+    if ($CheckFlag -eq $Verifier) {
+        $ReturnValue = $true
+    } else {
+        $ReturnValue = $false
+    }
 
     Win-DebugTimestamp -output (
         "{0}: Check driver verifier > {1}" -f $LogKeyWord, $ReturnValue
@@ -628,7 +632,11 @@ function UT-SetDebugMode
     $ReturnValue = $false
 
     $SetKey = "debug"
-    $SetValue = ($DebugMode) ? "ON" : "OFF"
+    if ($DebugMode) {
+        $SetValue = "ON"
+    } else {
+        $SetValue = "OFF"
+    }
 
     if ($Remote) {
         $LogKeyWord = $Session.Name
@@ -688,13 +696,17 @@ function UT-CheckDebugMode
     }
 
     if ([String]::IsNullOrEmpty($GetValue)) {
-        $ReturnValue = $false
+        $ReturnValue = $true
     } else {
         if ($GetValue -eq "Yes") {
             $DebugMode = $true
         }
 
-        $ReturnValue = ($DebugMode -eq $CheckFlag) ? $true : $false
+        if ($DebugMode -eq $CheckFlag) {
+            $ReturnValue = $true
+        } else {
+            $ReturnValue = $false
+        }
     }
 
     if ($Remote) {
@@ -726,7 +738,11 @@ function UT-SetTestMode
     $ReturnValue = $false
 
     $SetKey = "testsigning"
-    $SetValue = ($TestMode) ? "ON" : "OFF"
+    if ($TestMode) {
+        $SetValue = "ON"
+    } else {
+        $SetValue = "OFF"
+    }
 
     if ($Remote) {
         $LogKeyWord = $Session.Name
@@ -792,7 +808,11 @@ function UT-CheckTestMode
             $TestMode = $true
         }
 
-        $ReturnValue = ($TestMode -eq $CheckFlag) ? $true : $false
+        if ($TestMode -eq $CheckFlag) {
+            $ReturnValue = $true
+        } else {
+            $ReturnValue = $false
+        }
     }
 
     if ($Remote) {
@@ -824,7 +844,12 @@ function UT-SetUQMode
     $ReturnValue = $true
 
     $regeditKey = "HKLM:\SYSTEM\CurrentControlSet\Services\icp_qat4\UQ"
-    $SetUQValue = ($UQMode) ? 1 : 0
+    if ($UQMode) {
+        $SetUQValue = 1
+    } else {
+        $SetUQValue = 0
+    }
+
     $SetFlag = $false
 
     # Check: exist
@@ -935,7 +960,12 @@ function UT-CheckUQMode
             $UQModeInfo = (Get-ItemProperty -Path $regeditKey).EnableUQ
         }
 
-        $UQMode = ($UQModeInfo -eq 1) ? $true : $false
+        if ($UQModeInfo -eq 1) {
+            $UQMode = $true
+        } else {
+            $UQMode = $false
+        }
+
         if ($UQMode -eq $CheckFlag) {
             $ReturnValue = $true
         } else {

@@ -4,7 +4,6 @@ if (!$QATTESTPATH) {
 }
 
 Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
-Import-Module $STVMainDll -Force -DisableNameChecking
 
 function WinHost-ENVInit
 {

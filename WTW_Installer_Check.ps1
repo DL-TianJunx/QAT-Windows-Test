@@ -48,9 +48,24 @@ try {
         $FilePath = Join-Path -Path $BertaResultPath -ChildPath "task.json"
         $out = Get-Content -LiteralPath $FilePath | ConvertFrom-Json -AsHashtable
 
-        $BertaConfig["UQ_mode"] = ($out.config.UQ_mode -eq "true") ? $true : $false
-        $BertaConfig["test_mode"] = ($out.config.test_mode -eq "true") ? $true : $false
-        $BertaConfig["driver_verifier"] = ($out.config.driver_verifier -eq "true") ? $true : $false
+        if ($out.config.UQ_mode -eq "true") {
+            $BertaConfig["UQ_mode"] = $true
+        } else {
+            $BertaConfig["UQ_mode"] = $false
+        }
+
+        if ($out.config.test_mode -eq "true") {
+            $BertaConfig["test_mode"] = $true
+        } else {
+            $BertaConfig["test_mode"] = $false
+        }
+
+        if ($out.config.driver_verifier -eq "true") {
+            $BertaConfig["driver_verifier"] = $true
+        } else {
+            $BertaConfig["driver_verifier"] = $false
+        }
+
         $BertaConfig["DebugMode"] = $false
 
         $job2 = $out.jobs | Where-Object {$_.job_id -eq 2}
@@ -125,7 +140,12 @@ try {
         }
 
         Foreach ($VMVFOSConfig in $VMVFOSConfigs) {
-            $UQString = ($LocationInfo.UQMode) ? "UQ" : "NUQ"
+            if ($LocationInfo.UQMode) {
+                $UQString = "UQ"
+            } else {
+                $UQString = "NUQ"
+            }
+
             $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Installer" -f
                 $LocationInfo.QatType,
                 $UQString,
@@ -136,6 +156,7 @@ try {
                 WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $InitVM | out-null
 
                 Win-DebugTimestamp -output ("Start to run test case....")
+                Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
                 $TestResultList = WTW-InstallerCheckBase `
                     -parcompFlag $parcompFlag `
                     -cngtestFlag $cngtestFlag `

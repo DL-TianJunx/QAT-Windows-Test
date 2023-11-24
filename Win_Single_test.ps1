@@ -25,10 +25,30 @@ $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
 
-$InitVMInt = ($InitVM) ? 1 : 0
-$RunOnLocalInt = ($RunOnLocal) ? 1 : 0
-$UQModeInt = ($UQMode) ? 1 : 0
-$DebugModeInt = ($DebugMode) ? 1 : 0
+if ($InitVM) {
+    $InitVMInt = 1
+} else {
+    $InitVMInt = 0
+}
+
+if ($RunOnLocal) {
+    $RunOnLocalInt = 1
+} else {
+    $RunOnLocalInt = 0
+}
+
+if ($UQMode) {
+    $UQModeInt = 1
+} else {
+    $UQModeInt = 0
+}
+
+if ($DebugMode) {
+    $DebugModeInt = 1
+} else {
+    $DebugModeInt = 0
+}
+
 try {
     For ($i = 1; $i -le $Iteration; $i++) {
         Win-DebugTimestamp -output (

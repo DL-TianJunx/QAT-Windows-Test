@@ -23,45 +23,45 @@ function Berta-ENVInit
     #>
 
     # Update Powershell profile
-    $CopyFlag = $false
-    $PSProFileLocal = "{0}\\{1}" -f
-        $BertaENVInit.PSProFile.DestinationPath,
-        $BertaENVInit.PSProFile.FileName
-    $PSProFileRemote = "{0}\\{1}" -f
-        $BertaENVInit.PSProFile.SourcePath,
-        $BertaENVInit.PSProFile.FileName
+    $BertaENVInit.PSProFile.DestinationPath | ForEach-Object {
+        $CopyFlag = $false
+        $PSProFileLocal = "{0}\\{1}" -f
+            $_,
+            $BertaENVInit.PSProFile.FileName
+        $PSProFileRemote = "{0}\\{1}" -f
+            $BertaENVInit.PSProFile.SourcePath,
+            $BertaENVInit.PSProFile.FileName
 
-    if (Test-Path -Path $BertaENVInit.PSProFile.DestinationPath) {
-        if (Test-Path -Path $PSProFileLocal) {
-            $SourceMD5 = (certutil -hashfile $PSProFileLocal MD5).split("\n")[1]
-            $DestinationMD5 = (certutil -hashfile $PSProFileRemote MD5).split("\n")[1]
+        if (Test-Path -Path $_) {
+            if (Test-Path -Path $PSProFileLocal) {
+                $SourceMD5 = (certutil -hashfile $PSProFileLocal MD5).split("\n")[1]
+                $DestinationMD5 = (certutil -hashfile $PSProFileRemote MD5).split("\n")[1]
 
-            if ($SourceMD5 -ne $DestinationMD5) {
+                if ($SourceMD5 -ne $DestinationMD5) {
+                    $CopyFlag = $true
+                    Remove-Item `
+                        -Path $PSProFileLocal `
+                        -Force `
+                        -Confirm:$false `
+                        -ErrorAction Stop
+                }
+            } else {
                 $CopyFlag = $true
-                Remove-Item `
-                    -Path $PSProFileLocal `
-                    -Force `
-                    -Confirm:$false `
-                    -ErrorAction Stop
             }
         } else {
             $CopyFlag = $true
+            New-Item -Path $_ -ItemType Directory | out-null
         }
-    } else {
-        $CopyFlag = $true
-        New-Item `
-            -Path $BertaENVInit.PSProFile.DestinationPath `
-            -ItemType Directory | out-null
-    }
 
-    if ($CopyFlag) {
-        Copy-Item `
-            -Path $PSProFileRemote `
-            -Destination $PSProFileLocal `
-            -Recurse `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop
+        if ($CopyFlag) {
+            Copy-Item `
+                -Path $PSProFileRemote `
+                -Destination $PSProFileLocal `
+                -Recurse `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop
+        }
     }
 }
 
@@ -71,16 +71,6 @@ function Berta-CopyTestDir
 
     $LocalTestDir = "C:\QatTestBerta"
 
-    if (Test-Path -Path $LocalTestDir) {
-        CD C:\
-        Remove-Item `
-            -Path $LocalTestDir `
-            -Recurse `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
-    }
-
     try {
         $LocalIPProxy = "http://child-prc.intel.com:913"
         $RemoteTestDir = "https://github.com/cuiyanx/QAT-Windows-Test.git"
@@ -88,6 +78,7 @@ function Berta-CopyTestDir
         Invoke-Command -ScriptBlock {
             Param($LocalTestDir, $LocalIPProxy, $RemoteTestDir)
             CD C:\
+
             if (-not (Test-Path -Path "C:\.git")) {
                 git init
             }
@@ -98,7 +89,12 @@ function Berta-CopyTestDir
             git config --global http.proxy $LocalIPProxy
             git config --global https.proxy $LocalIPProxy
 
-            git clone $RemoteTestDir $LocalTestDir
+            if (Test-Path -Path $LocalTestDir) {
+                CD $LocalTestDir
+                git pull $RemoteTestDir main
+            } else {
+                git clone $RemoteTestDir $LocalTestDir
+            }
         } -ArgumentList $LocalTestDir, $LocalIPProxy, $RemoteTestDir | out-null
     } catch {
         Win-DebugTimestamp -output ("Git Error: {0}" -f $_)

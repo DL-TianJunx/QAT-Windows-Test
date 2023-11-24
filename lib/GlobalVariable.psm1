@@ -138,6 +138,7 @@ $global:RemoteUserConfig =  [hashtable] @{
     UserName = "administrator"
     Password = "root.1234"
     RootName = "root"
+    DomainUserName = "QATWSTV_Domain\Administrator"
 }
 
 $global:WTWSecPassword = ConvertTo-SecureString `
@@ -148,6 +149,10 @@ $global:WTWSecPassword = ConvertTo-SecureString `
 $global:WTWCredentials = New-Object `
     -TypeName "System.Management.Automation.PSCredential" `
     -ArgumentList $RemoteUserConfig.UserName, $WTWSecPassword
+
+$global:DomainCredentials = New-Object `
+    -TypeName "System.Management.Automation.PSCredential" `
+    -ArgumentList $RemoteUserConfig.DomainUserName, $WTWSecPassword
 
 # About Test type
 $global:AllTestType = [hashtable] @{
@@ -281,7 +286,10 @@ $global:BertaENVInit = [hashtable] @{
     PSProFile = [hashtable] @{
         FileName = "Microsoft.PowerShell_profile.ps1"
         SourcePath = "{0}\\utils" -f $QATTESTPATH
-        DestinationPath = "C:\\Users\\Administrator\\Documents\\PowerShell"
+        DestinationPath = [System.Array] @(
+            "C:\\Users\\Administrator\\Documents\\PowerShell",
+            "C:\\Users\\Administrator\\Documents\\WindowsPowerShell"
+        )
     }
     LinuxShell = [hashtable] @{
         SourcePath = "\\10.67.115.211\\mountBertaCTL\\LinuxShellCode"
@@ -319,7 +327,7 @@ $global:VMState = [hashtable] @{
 $global:VHDAndTestFiles = [hashtable] @{
     SourceVMPath = "\\10.67.115.211\\mountBertaCTL\\vms\\vhd"
     ParentsVMPath = "C:\\vhd"
-    ChildVMPath = "C:\vhd\WTWChildVhds"
+    ChildVMPath = "C:\\vhd\\WTWChildVhds"
     SourceTestPath = "C:\\vhd\\WinTestFile"
 }
 
@@ -373,6 +381,16 @@ $global:LocationInfo = [hashtable] @{
     PDBNameArray = [hashtable] @{
         Host = [System.Array] @()
         Remote = [System.Array] @()
+    }
+    Domain = [hashtable] @{
+        ExecutingServer = $null
+        TargetServer = $null
+        PSSession = [hashtable] @{
+            Name = "PSSession_Domain"
+            Session = $null
+        }
+        DriverPath = "C:\\Domain_QAT_driver"
+        ResultPath = "C:\\Domain_test_result"
     }
 }
 

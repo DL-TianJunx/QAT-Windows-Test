@@ -181,6 +181,7 @@ function HV-PSSessionCheck
         if ($PSSession.ComputerName -eq $VMName) {
             if ($PSSession.state -eq "Opened") {
                 $ReturnValue.result = $true
+                $ReturnValue.exist = $true
             } else {
                 $ReturnValue.result = $false
                 $ReturnValue.exist = $true
@@ -201,13 +202,15 @@ function HV-PSSessionCheck
 function HV-GenerateVMVFConfig
 {
     Param(
-        [string]$ConfigType = "Base"
+        [string]$ConfigType = "Base",
+
+        [hashtable]$RemoteInfo = $null
     )
 
     $ReturnValue = @()
 
     if ($LocationInfo.VM.IsWin) {
-        if (($ConfigType -eq "SmokeTest") -or ($ConfigType -eq "Stress")) {
+        if (($ConfigType -eq "SmokeTest") -or ($ConfigType -eq "Stress") -or ($ConfigType -eq "LiveM")) {
             $VMOSs = ("windows2022")
         } else {
             $VMOSs = ("windows2019", "windows2022")
@@ -241,6 +244,38 @@ function HV-GenerateVMVFConfig
         } elseif ($ConfigType -eq "Stress") {
             $VMVFOSName = "12vm_{0}vf_{1}" -f $LocationInfo.PF.Number, $VMOS
             $ReturnValue += $VMVFOSName
+        } elseif ($ConfigType -eq "LiveM") {
+            if ([String]::IsNullOrEmpty($RemoteInfo)) {
+                $VMVFOSName = "3vm_{0}vf_{1}" -f $LocationInfo.PF.Number, $VMOS
+                $ReturnValue += $VMVFOSName
+
+                $AllVFs = $LocationInfo.PF.Number * $LocationInfo.PF2VF
+                $VMNumber = [Math]::Truncate($AllVFs / 64)
+                if ($VMNumber -gt 1) {$VMNumber = 1}
+                $VMVFOSName = "{0}vm_64vf_{1}" -f $VMNumber, $VMOS
+                $ReturnValue += $VMVFOSName
+            } else {
+                if ($LocationInfo.PF.Number -gt $RemoteInfo.PF.Number) {
+                    $PFNumber = $RemoteInfo.PF.Number
+                } else {
+                    $PFNumber = $LocationInfo.PF.Number
+                }
+                $VMVFOSName = "3vm_{0}vf_{1}" -f $PFNumber, $VMOS
+                $ReturnValue += $VMVFOSName
+
+                $LocationAllVFs = $LocationInfo.PF.Number * $LocationInfo.PF2VF
+                $LocationVMNumber = [Math]::Truncate($LocationAllVFs / 64)
+                $RemoteAllVFs = $RemoteInfo.PF.Number * $RemoteInfo.PF2VF
+                $RemoteVMNumber = [Math]::Truncate($RemoteAllVFs / 64)
+                if ($LocationVMNumber -gt $RemoteVMNumber) {
+                    $VMNumber = $RemoteVMNumber
+                } else {
+                    $VMNumber = $LocationVMNumber
+                }
+                if ($VMNumber -gt 1) {$VMNumber = 1}
+                $VMVFOSName = "{0}vm_64vf_{1}" -f $VMNumber, $VMOS
+                $ReturnValue += $VMVFOSName
+            }
         } else {
             throw ("Can not generate VMVFOS configs > {0}" -f $ConfigType)
         }
@@ -335,9 +370,9 @@ function HV-VMVFConfigInit
 
         <#
         $LocationInfo.VM.NameArray | ForEach-Object {
-            write-host ("--------{0}" -f $_)
-            $LocationInfo.VF.PFVFList[$_] | ForEach-Object {
-                write-host ("{0} : {1}" -f $_.PF, $_.VF)
+            $VMName = $_
+            $LocationInfo.VF.PFVFList[$VMName] | ForEach-Object {
+                Win-DebugTimestamp -output ("{0}: {1} > {2}" -f $VMName, $_.PF, $_.VF)
             }
         }
         #>
@@ -577,10 +612,10 @@ function HV-RemoveVM
     )
 
     if (Test-Path -Path $VHDAndTestFiles.ChildVMPath) {
-        $VM = Get-VM -Name $VMName
-        if (-not [String]::IsNullOrEmpty($VM)) {
-            $VMParentPathName = Split-Path -Parent $VM.HardDrives.Path
-            if ($VMParentPathName -eq $VHDAndTestFiles.ChildVMPath) {
+        $GetVMError = $null
+        $VM = Get-VM -Name $VMName -ErrorAction SilentlyContinue -ErrorVariable GetVMError
+        if ([String]::IsNullOrEmpty($GetVMError)) {
+            if ($VM.HardDrives.Path -match $VHDAndTestFiles.ChildVMPath) {
                 if ($VM.State -ne "off") {
                     HV-RestartVMHard `
                         -VMName $VMName `
@@ -593,13 +628,19 @@ function HV-RemoveVM
                 Win-DebugTimestamp -output ("Removing VM named {0}" -f $VM.Name)
                 Remove-VM -Name $VM.Name -Force -Confirm:$false | out-null
                 Remove-Item -Path $VM.HardDrives.Path -Force -Confirm:$false | out-null
+                $VMPath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $VMName
+                if (Test-Path -Path $VMPath) {
+                    Remove-Item -Path $VMPath -Recurse -Force -Confirm:$false | out-null
+                }
             }
         } else {
             $VMArray = Get-ChildItem -Path $VHDAndTestFiles.ChildVMPath
             if (-not ([String]::IsNullOrEmpty($VMArray))) {
                 $VMArray | ForEach-Object {
-                    $VMFullPath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $_.Name
-                    Remove-Item -Path $VMFullPath -Force -Confirm:$false | out-null
+                    if ($_.Name -match $VMName) {
+                        $VMFullPath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $_.Name
+                        Remove-Item -Path $VMFullPath -Recurse -Force -Confirm:$false | out-null
+                    }
                 }
             }
         }
@@ -750,19 +791,19 @@ function HV-AssignableDeviceAdd
 
     $PFVFArray | ForEach-Object {
         ForEach ($localPath in $LocationInfo.PF.PCI) {
-            if ($localPath[0] -eq $_.PF) {
+            if ([int]($localPath.Id) -eq [int]($_.PF)) {
                 try {
                     Win-DebugTimestamp -output (
                         "Adding QAT VF with InstancePath {0} and VF# {1}" -f
-                            $localPath[1], $_.VF
+                            $localPath.Instance, $_.VF
                     )
 
                     Add-VMAssignableDevice `
                         -VMName $VMName `
-                        -LocationPath $localPath[1] `
+                        -LocationPath $localPath.Instance `
                         -VirtualFunction $_.VF | out-null
                 } catch {
-                    throw ("Error: Assigning qat device > {0}" -f $localPath[1])
+                    throw ("Error: Assigning qat device > {0}" -f $localPath.Instance)
                 }
             }
         }
@@ -791,14 +832,14 @@ function HV-AssignableDeviceCheck
 
     $ReturnValue = $true
 
-    $TargetDevNember = $PFVFArray.Length
-    $CheckDevNember = (Get-VMAssignableDevice -VMName $VMName).Length
-    $ReturnValue = ($TargetDevNember -eq $CheckDevNember) ? $true : $false
-
-    if ($ReturnValue) {
+    $TargetDevNumber = $PFVFArray.Length
+    $CheckDevNumber = (Get-VMAssignableDevice -VMName $VMName).Length
+    if ($TargetDevNumber -eq $CheckDevNumber) {
         Win-DebugTimestamp -output ("Double check assignable VF number is correct")
+        $ReturnValue = $true
     } else {
         Win-DebugTimestamp -output ("Double check assignable VF number is incorrect")
+        $ReturnValue = $false
     }
 
     return $ReturnValue

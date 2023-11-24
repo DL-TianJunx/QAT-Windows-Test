@@ -106,7 +106,9 @@ function WBase-WriteTestResult
         [Parameter(Mandatory=$True)]
         [hashtable]$TestResult,
 
-        [string]$ResultFile = $null
+        [string]$ResultFile = $null,
+
+        [bool]$WriteFlag = $true
     )
 
     if ([String]::IsNullOrEmpty($ResultFile)) {
@@ -121,8 +123,10 @@ function WBase-WriteTestResult
     $resultJson | Out-File $ResultFile -Append -Encoding ascii
 
     if ($ResultFile -eq $WinTestResultFile) {
-        Win-DebugTimestamp -output ("{0} > {1}" -f $ResultFile, $resultJson)
-        Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
+        if ($WriteFlag) {
+            Win-DebugTimestamp -output ("{0} > {1}" -f $ResultFile, $resultJson)
+            Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
+        }
     }
 }
 
@@ -177,7 +181,7 @@ function WBase-CompareTestResult
             }
 
             if ($writeFlag) {
-                WBase-WriteTestResult -TestResult $CompareLine
+                WBase-WriteTestResult -TestResult $CompareLine -WriteFlag $false
             }
         }
 
@@ -233,7 +237,11 @@ function WBase-HostDeviceInit
                 $LocationPath = Get-PnpDeviceProperty -InstanceId $PnpDeviceObject.DeviceID `
                                                       -KeyName DEVPKEY_Device_LocationPaths
                 $LocationPath = $LocationPath.data.split()[0]
-                $LocationInfo.PF.PCI += [System.Tuple]::Create($devCount, $LocationPath)
+                $LocationInfo.PF.PCI += [hashtable] @{
+                    Id = $devCount
+                    Instance = $LocationPath
+                }
+
                 Win-DebugTimestamp -output ("Host: Qat device {0} > {1}" -f $devCount, $LocationPath)
                 $devCount++
             }
@@ -491,6 +499,13 @@ function WBase-LocationInfoInit
             $VMDriverInstallPath.QatSetupPath
     }
 
+    $LocationInfo.Domain.ExecutingServer = $env:COMPUTERNAME
+    if ([String]::IsNullOrEmpty($BertaConfig.TargetServer)) {
+        $LocationInfo.Domain.TargetServer = $null
+    } else {
+        $LocationInfo.Domain.TargetServer = $BertaConfig.TargetServer
+    }
+
     # Init test path on host
     WBase-STVWinPathInit | out-null
 
@@ -639,6 +654,8 @@ function WBase-LocationInfoInit
     Win-DebugTimestamp -output ("          IcpQatName : {0}" -f $LocationInfo.IcpQatName)
     Win-DebugTimestamp -output ("   WriteLogToConsole : {0}" -f $LocationInfo.WriteLogToConsole)
     Win-DebugTimestamp -output ("      WriteLogToFile : {0}" -f $LocationInfo.WriteLogToFile)
+    Win-DebugTimestamp -output ("     ExecutingServer : {0}" -f $LocationInfo.Domain.ExecutingServer)
+    Win-DebugTimestamp -output ("        TargetServer : {0}" -f $LocationInfo.Domain.TargetServer)
 }
 
 function WBase-GetDriverPath

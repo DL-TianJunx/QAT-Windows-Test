@@ -50,8 +50,19 @@ try {
         $out = Get-Content -LiteralPath $FilePath | ConvertFrom-Json -AsHashtable
 
         $BertaConfig["UQ_mode"] = $out.config.UQ_mode
-        $BertaConfig["test_mode"] = ($out.config.test_mode -eq "true") ? $true : $false
-        $BertaConfig["driver_verifier"] = ($out.config.driver_verifier -eq "true") ? $true : $false
+
+        if ($out.config.test_mode -eq "true") {
+            $BertaConfig["test_mode"] = $true
+        } else {
+            $BertaConfig["test_mode"] = $false
+        }
+
+        if ($out.config.driver_verifier -eq "true") {
+            $BertaConfig["driver_verifier"] = $true
+        } else {
+            $BertaConfig["driver_verifier"] = $false
+        }
+
         $BertaConfig["DebugMode"] = $false
 
         $job2 = $out.jobs | Where-Object {$_.job_id -eq 2}

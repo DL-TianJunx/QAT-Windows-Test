@@ -4,8 +4,6 @@ Param(
 
     [bool]$RunOnLocal = $false,
 
-    [bool]$InitVM = $true,
-
     [array]$VMVFOSConfigs = $null,
 
     [bool]$UQMode = $false,
@@ -20,6 +18,8 @@ Param(
 
     [string]$runTestCase = $null,
 
+    [string]$TargetServer = $null,
+
     [string]$DriverPath = "C:\\cy-work\\qat_driver\\",
 
     [string]$ResultFile = "result.log"
@@ -28,6 +28,7 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
+Import-Module "$QATTESTPATH\\lib\\Domain.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
@@ -44,6 +45,7 @@ try {
         $BertaConfig["test_mode"] = $TestMode
         $BertaConfig["driver_verifier"] = $VerifierMode
         $BertaConfig["DebugMode"] = $DebugMode
+        $BertaConfig["TargetServer"] = $TargetServer
         $LocationInfo.WriteLogToConsole = $true
         $LocalBuildPath = $DriverPath
     } else {
@@ -69,9 +71,14 @@ try {
         }
 
         $BertaConfig["DebugMode"] = $false
+        $BertaConfig["TargetServer"] = $out.config.TargetServer
 
         $job2 = $out.jobs | Where-Object {$_.job_id -eq 2}
         $LocalBuildPath = $job2.bld_path
+    }
+
+    if ([String]::IsNullOrEmpty($BertaConfig["TargetServer"])) {
+        throw ("The TargetServer is null, please double check.")
     }
 
     $LocationInfo.HVMode = $true
@@ -83,30 +90,48 @@ try {
                            -QatDriverFullPath $PFVFDriverPath `
                            -BertaConfig $BertaConfig | out-null
 
+    $LocationInfo.Domain.PSSession.Session = Domain-PSSessionCreate `
+        -RMName $BertaConfig["TargetServer"] `
+        -PSName $LocationInfo.Domain.PSSession.Name
+
+    $DomainRemoteInfo = Domain-RemoteInfoInit `
+        -BertaConfig $BertaConfig `
+        -BuildPath $LocalBuildPath
+
+    if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig `
+            -ConfigType "LiveM" `
+            -RemoteInfo $DomainRemoteInfo
+    }
+
     [System.Array]$CompareTypes = ("true", "false")
 
     # Special: For All
     if ([String]::IsNullOrEmpty($runTestCase)) {
-        [System.Array]$CNGTestProvider = ("qa")
+        [System.Array]$ParcompProvider = ("qat", "qatgzip", "qatgzipext", "qatlz4")
+        [System.Array]$ParcompCompressionType = ("dynamic")
+        [System.Array]$ParcompCompressionLevel = (1, 2, 3, 4)
+        [System.Array]$ParcompChunk = (64, 512)
+        [System.Array]$ParcompBlock = (4096)
+        [System.Array]$ParcompThread = (8)
+        [System.Array]$ParcompIteration = (200)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
-        [System.Array]$CNGTestProvider = $AnalyzeResult.CNGTest.Provider
-        [System.Array]$CNGTestAlgo = $AnalyzeResult.CNGTest.Algo
-        [System.Array]$CNGTestEcccurve = $AnalyzeResult.CNGTest.Ecccurve
-        [System.Array]$CNGTestKeyLength = $AnalyzeResult.CNGTest.KeyLength
-        [System.Array]$CNGTestPadding = $AnalyzeResult.CNGTest.Padding
-        [System.Array]$CNGTestOperation = $AnalyzeResult.CNGTest.Operation
-        [System.Array]$CNGTestIteration = $AnalyzeResult.CNGTest.Iteration
-        [System.Array]$CNGTestThread = $AnalyzeResult.CNGTest.Thread
+        [System.Array]$ParcompProvider = $AnalyzeResult.Parcomp.Provider
+        [System.Array]$ParcompChunk = $AnalyzeResult.Parcomp.Chunk
+        [System.Array]$ParcompBlock = $AnalyzeResult.Parcomp.Block
+        [System.Array]$ParcompCompressType = $AnalyzeResult.Parcomp.CompressType
+        [System.Array]$ParcompCompressionLevel = $AnalyzeResult.Parcomp.Level
+        [System.Array]$ParcompCompressionType = $AnalyzeResult.Parcomp.CompressionType
+        [System.Array]$ParcompIteration = $AnalyzeResult.Parcomp.Iteration
+        [System.Array]$ParcompThread = $AnalyzeResult.Parcomp.Thread
+        [System.Array]$TestFileNameArray.Type = $AnalyzeResult.Parcomp.TestFileType
+        [System.Array]$TestFileNameArray.Size = $AnalyzeResult.Parcomp.TestFileSize
         [System.Array]$AllTestType.Operation = $AnalyzeResult.Operation
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $CNGTestPathName = "CNGTest"
-
-    if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "PerfParameter"
-    }
+    $TestFilefullPath = $null
 
     # Special: For QAT17
     if ($LocationInfo.QatType -eq "QAT17") {
@@ -127,22 +152,20 @@ try {
         if ($LocationInfo.UQMode) {
             throw ("QAT20: On the HVMode, not support UQ Mode.")
         }
-
-        if ([String]::IsNullOrEmpty($runTestCase)) {
-            [System.Array]$CNGTestAlgo = ("rsa", "ecdsa", "ecdh")
-        }
     }
 
-    # CNGTest: Generate test case list based on config
-    $TestCaseList = WBase-GenerateCNGTestCase `
-        -ArrayProvider $CNGTestProvider `
-        -ArrayAlgo $CNGTestAlgo `
-        -ArrayOperation $CNGTestOperation `
-        -ArrayKeyLength $CNGTestKeyLength `
-        -ArrayEcccurve $CNGTestEcccurve `
-        -ArrayPadding $CNGTestPadding `
-        -ArrayIteration $CNGTestIteration `
-        -ArrayThread $CNGTestThread
+    # Parcomp: Generate test case list based on config
+    $TestCaseList = WBase-GenerateParcompTestCase `
+        -ArrayProvider $ParcompProvider `
+        -ArrayChunk $ParcompChunk `
+        -ArrayBlock $ParcompBlock `
+        -ArrayCompressType $ParcompCompressType `
+        -ArrayCompressionType $ParcompCompressionType `
+        -ArrayCompressionLevel $ParcompCompressionLevel `
+        -ArrayIteration $ParcompIteration `
+        -ArrayThread $ParcompThread `
+        -ArrayTestFileType $TestFileNameArray.Type`
+        -ArrayTestFileSize $TestFileNameArray.Size
 
     Foreach ($CompareType in $CompareTypes) {
         if ($CompareType -eq "true") {
@@ -163,36 +186,46 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Perf_Parameter" -f
+            $testNameHeader = "LiveM_{0}_{1}_{2}" -f
                 $LocationInfo.QatType,
                 $UQString,
                 $VMVFOSConfig
 
             if (-not $CompareFlag) {
-                Win-DebugTimestamp -output ("Initialize test environment....")
-                WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $InitVM | out-null
-
                 Win-DebugTimestamp -output ("Start to run test case....")
                 Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
             }
 
             Foreach ($TestCase in $TestCaseList) {
-                $testName = "{0}_{1}_{2}_Thread{3}_Iteration{4}_{5}" -f
-                    $testNameHeader,
-                    $TestCase.Provider,
-                    $TestCase.Algo,
-                    $TestCase.Thread,
-                    $TestCase.Iteration,
-                    $TestCase.Operation
-
-                if (($TestCase.Algo -eq "ecdsa") -or ($TestCase.Algo -eq "ecdh")) {
-                    $testName = "{0}_{1}" -f $testName, $TestCase.Ecccurve
-                } else {
-                    $testName = "{0}_KeyLength{1}" -f $testName, $TestCase.KeyLength
+                # deCompress: qatgzip not support -k -t -Q
+                if ($TestCase.Provider -eq "qatgzip") {
+                    if (($TestCase.CompressType -eq "deCompress") -or
+                        ($TestCase.CompressType -eq "All")) {
+                        continue
+                    }
                 }
 
-                if ($TestCase.Algo -eq "rsa") {
-                    $testName = "{0}_{1}" -f $testName, $TestCase.Padding
+                $testName = "{0}_{1}_{2}_Thread{3}_Iteration{4}_Block{5}_Chunk{6}_{7}{8}" -f
+                    $testNameHeader,
+                    $TestCase.Provider,
+                    $TestCase.CompressType,
+                    $TestCase.Thread,
+                    $TestCase.Iteration,
+                    $TestCase.Block,
+                    $TestCase.Chunk,
+                    $TestCase.TestFileType,
+                    $TestCase.TestFileSize
+
+                if ($TestCase.CompressType -eq "Compress") {
+                    $testName = "{0}_Level{1}" -f
+                        $testName,
+                        $TestCase.CompressionLevel
+                }
+
+                if ($TestCase.Provider -eq "qat") {
+                    $testName = "{0}_{1}" -f
+                        $testName,
+                        $TestCase.CompressionType
                 }
 
                 if ($CompareFlag) {
@@ -207,24 +240,36 @@ try {
                         -ResultFile $CompareFile
                 } else {
                     Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
+                    Win-DebugTimestamp -output ("Initialize test environment....")
+                    WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $true | out-null
+
+                    Domain-RemoteRemoveVMs | out-null
+                    $DomainRemoteInfo = Domain-RemoteVMVFConfigInit `
+                        -RemoteInfo $DomainRemoteInfo `
+                        -VMVFOSConfig $VMVFOSConfig
+
                     $LocationInfo.TestCaseName = $testName
 
-                    $CNGTestResult = WTW-CNGTestBase `
-                        -algo $TestCase.Algo `
-                        -operation $TestCase.Operation `
-                        -provider $TestCase.Provider `
-                        -keyLength $TestCase.KeyLength `
-                        -padding $TestCase.Padding `
-                        -ecccurve $TestCase.Ecccurve `
+                    $LiveMTestResult = Domain-LiveMParcomp `
+                        -CompressType $TestCase.CompressType `
+                        -CompressProvider $TestCase.Provider `
+                        -deCompressProvider $TestCase.Provider `
+                        -QatCompressionType $TestCase.CompressionType `
+                        -Level $TestCase.CompressionLevel `
                         -numThreads $TestCase.Thread `
-                        -numIter $TestCase.Iteration `
-                        -TestPathName $CNGTestPathName `
-                        -BertaResultPath $BertaResultPath
+                        -numIterations $TestCase.Iteration `
+                        -blockSize $TestCase.Block `
+                        -Chunk $TestCase.Chunk `
+                        -TestFilefullPath $TestFilefullPath `
+                        -BertaResultPath $BertaResultPath `
+                        -TestFileType $TestCase.TestFileType `
+                        -TestFileSize $TestCase.TestFileSize `
+                        -RemoteInfo $DomainRemoteInfo
 
-                    if ($CNGTestResult.result) {
-                        $CNGTestResult.result = $TestResultToBerta.Pass
+                    if ($LiveMTestResult.result) {
+                        $LiveMTestResult.result = $TestResultToBerta.Pass
                     } else {
-                        $CNGTestResult.result = $TestResultToBerta.Fail
+                        $LiveMTestResult.result = $TestResultToBerta.Fail
 
                         if ($FailToStop) {
                             throw ("If test caes is failed, then stop testing.")
@@ -233,8 +278,8 @@ try {
 
                     $TestCaseResultsList = [hashtable] @{
                         tc = $testName
-                        s = $CNGTestResult.result
-                        e = $CNGTestResult.error
+                        s = $LiveMTestResult.result
+                        e = $LiveMTestResult.error
                     }
 
                     WBase-WriteTestResult -TestResult $TestCaseResultsList
