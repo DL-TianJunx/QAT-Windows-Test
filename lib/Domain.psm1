@@ -775,7 +775,7 @@ function Domain-LiveMParcomp
 
                                     $CheckMD5Result = WTW-RemoteCheckMD5 `
                                         -Session $Session `
-                                        -deCompressFlag $false `
+                                        -deCompressFlag $true `
                                         -CompressProvider $CompressProvider `
                                         -deCompressProvider $deCompressProvider `
                                         -QatCompressionType $QatCompressionType `
