@@ -407,7 +407,10 @@ function Domain-LiveMParcomp
         HV-AssignableDeviceRemove -VMName $vmName | out-null
 
         Win-DebugTimestamp -output ("{0}: Start to move vm ...." -f $PSSessionName)
-        $DestinationStoragePath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $LocationInfo.Domain.TargetServer
+        $DestinationStoragePath = "{0}\\{1}_{2}" -f
+            $VHDAndTestFiles.ChildVMPath,
+            $LocationInfo.Domain.TargetServer,
+            $_
         Move-VM -Name $vmName `
                 -DestinationHost $RMName `
                 -IncludeStorage `
