@@ -533,7 +533,8 @@ function Domain-LiveMParcomp
                         $Session = HV-PSSessionCreate `
                             -VMName $vmName `
                             -PSName $PSSessionName `
-                            -IsWin $true
+                            -IsWin $true `
+                            -CheckFlag $false
 
                         $WaitProcessFlag = WBase-WaitProcessToCompleted `
                             -ProcessName "parcomp" `

@@ -43,7 +43,9 @@ function HV-PSSessionCreate
         [Parameter(Mandatory=$True)]
         [string]$PSName,
 
-        [bool]$IsWin = $true
+        [bool]$IsWin = $true,
+
+        [bool]$CheckFlag = $true
     )
 
     HV-WaitVMToCompleted -VMName $VMName -Wait $false | out-null
@@ -91,7 +93,7 @@ function HV-PSSessionCreate
             }
         }
 
-        if ($IsWin) {
+        if ($IsWin -and $CheckFlag) {
             $Session = Get-PSSession -name $PSName
             if (Invoke-Command -Session $Session -ScriptBlock {
                     Param($SiteKeep)

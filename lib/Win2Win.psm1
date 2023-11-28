@@ -20,7 +20,9 @@ function WTWRestartVMs
 
         [bool]$WaitFlag = $true,
 
-        [bool]$SessionFlag = $true
+        [bool]$SessionFlag = $true,
+
+        [bool]$CheckFlag = $true
     )
 
     if ($StopFlag) {
@@ -62,7 +64,8 @@ function WTWRestartVMs
             HV-PSSessionCreate `
                 -VMName $VMName `
                 -PSName $PSSessionName `
-                -IsWin $true
+                -IsWin $true `
+                -CheckFlag $CheckFlag
         }
     }
 }
@@ -120,7 +123,8 @@ function WTW-ENVInit
             -TurnOff $false `
             -StartFlag $true `
             -WaitFlag $true `
-            -SessionFlag $true | out-null
+            -SessionFlag $true `
+            -CheckFlag $false | out-null
     }
 
     # Copy Utils and qat windows driver
