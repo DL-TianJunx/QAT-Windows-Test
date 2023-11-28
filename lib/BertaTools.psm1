@@ -34,8 +34,8 @@ function Berta-ENVInit
 
         if (Test-Path -Path $_) {
             if (Test-Path -Path $PSProFileLocal) {
-                $SourceMD5 = (certutil -hashfile $PSProFileLocal MD5).split("\n")[1]
-                $DestinationMD5 = (certutil -hashfile $PSProFileRemote MD5).split("\n")[1]
+                $SourceMD5 = (certutil -hashfile $PSProFileLocal MD5)[1]
+                $DestinationMD5 = (certutil -hashfile $PSProFileRemote MD5)[1]
 
                 if ($SourceMD5 -ne $DestinationMD5) {
                     $CopyFlag = $true

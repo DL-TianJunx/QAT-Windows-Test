@@ -243,7 +243,6 @@ try {
                     Win-DebugTimestamp -output ("Initialize test environment....")
                     WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $true | out-null
 
-                    Domain-RemoteRemoveVMs | out-null
                     $DomainRemoteInfo = Domain-RemoteVMVFConfigInit `
                         -RemoteInfo $DomainRemoteInfo `
                         -VMVFOSConfig $VMVFOSConfig

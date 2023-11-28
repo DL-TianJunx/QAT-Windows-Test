@@ -226,6 +226,8 @@ function Domain-RemoteVMVFConfigInit
         -RMName $LocationInfo.Domain.TargetServer `
         -PSName $LocationInfo.Domain.PSSession.Name
 
+    Domain-RemoteRemoveVMs | out-null
+
     Win-DebugTimestamp -output ("{0}: Init config info for VMVFOS...." -f $LocationInfo.Domain.TargetServer)
     $ReturnValue = Invoke-Command -Session $DomainPSSession -ScriptBlock {
         Param($RemoteInfo, $VMVFOSConfig)
@@ -405,7 +407,7 @@ function Domain-LiveMParcomp
         HV-AssignableDeviceRemove -VMName $vmName | out-null
 
         Win-DebugTimestamp -output ("{0}: Start to move vm ...." -f $PSSessionName)
-        $DestinationStoragePath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $vmName
+        $DestinationStoragePath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $LocationInfo.Domain.TargetServer
         Move-VM -Name $vmName `
                 -DestinationHost $RMName `
                 -IncludeStorage `
@@ -424,6 +426,13 @@ function Domain-LiveMParcomp
         } else {
             Win-DebugTimestamp -output ("{0}: Move vm is successful" -f $PSSessionName)
         }
+
+        # Rename vm on the target machine
+        Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($vmName, $_)
+            $NewvmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
+            Rename-VM -Name $vmName -NewName $NewvmName
+        } -ArgumentList $vmName, $_ | out-null
     }
 
     # reAdd VFs for VMs on the target machine
@@ -431,15 +440,6 @@ function Domain-LiveMParcomp
         $DomainPSSession = Domain-PSSessionCreate `
             -RMName $LocationInfo.Domain.TargetServer `
             -PSName $LocationInfo.Domain.PSSession.Name
-
-        $VMNameList | ForEach-Object {
-            Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                Param($vmNameBase, $_)
-                $vmName = "{0}_{1}" -f $vmNameBase, $_
-                $NewvmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-                Rename-VM -Name $vmName -NewName $NewvmName
-            } -ArgumentList $vmNameBase, $_ | out-null
-        }
 
         Win-DebugTimestamp -output ("{0}: reAdd VFs on the target machine" -f $DomainPSSession.Name)
         $VMNameList | ForEach-Object {
