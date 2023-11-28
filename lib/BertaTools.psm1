@@ -91,6 +91,7 @@ function Berta-CopyTestDir
 
             if (Test-Path -Path $LocalTestDir) {
                 CD $LocalTestDir
+                git checkout .
                 git pull $RemoteTestDir main
             } else {
                 git clone $RemoteTestDir $LocalTestDir
