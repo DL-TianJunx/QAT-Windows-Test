@@ -275,6 +275,12 @@ function WBase-HostDeviceInit
         $LocationInfo.Socket2PF = 2
         $LocationInfo.PF2VF = 16
         $PFNumber = $SocketNumber * $LocationInfo.Socket2PF
+    } elseif ($LocationInfo.FriendlyName -eq "Intel(R) 402xx Accelerator*") {
+        $LocationInfo.QatType = "QAT20"
+        $LocationInfo.IcpQatName = "icp_qat4"
+        $LocationInfo.Socket2PF = 4
+        $LocationInfo.PF2VF = 16
+        $PFNumber = $SocketNumber * $LocationInfo.Socket2PF
     } else {
         Win-DebugTimestamp -output ("Host: Can not get the friendly name")
         return $false

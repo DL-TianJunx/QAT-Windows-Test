@@ -36,7 +36,8 @@ $global:FriendlyNames = [System.Array] @(
     "Intel(R) C62x Accelerator*", # QAT1.7
     "Intel(R) 4xxx Accelerator*", # QAT2.0 XCC
     "Intel(R) C4xxx Accelerator*", # QAT1.8
-    "Intel(R) 401xx Accelerator*" # QAT2.0 MCC
+    "Intel(R) 401xx Accelerator*"， # QAT2.0 MCC
+    "Intel(R) 402xx Accelerator*" # QAT2.0 BHS
 )
 
 $global:LinuxShell = [hashtable] @{
