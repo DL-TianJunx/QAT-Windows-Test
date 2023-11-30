@@ -165,6 +165,10 @@ function Domain-RemoteInfoInit
 
     Invoke-Command -ScriptBlock {
         Enable-VMMigration
+        CMD
+        winrm set winrm/config/service/auth @{CredSSP="true"}
+        winrm set winrm/config/service/auth @{Credential="true"}
+        exit
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
             -VirtualMachineMigrationAuthenticationType "Kerberos"
@@ -172,6 +176,10 @@ function Domain-RemoteInfoInit
 
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
         Enable-VMMigration
+        CMD
+        winrm set winrm/config/service/auth @{CredSSP="true"}
+        winrm set winrm/config/service/auth @{Credential="true"}
+        exit
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
             -VirtualMachineMigrationAuthenticationType "Kerberos"
