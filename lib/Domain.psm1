@@ -166,10 +166,10 @@ function Domain-RemoteInfoInit
     Win-DebugTimestamp -output ("Init test ENV on target server....")
     Invoke-Command -ScriptBlock {
         Enable-VMMigration
-        CMD
-        winrm set winrm/config/service/auth @{CredSSP="true"}
-        winrm set winrm/config/service/auth @{Credential="true"}
-        exit
+
+        & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
+        & cmd /c 'winrm set winrm/config/service/auth @{Credential="true"}'
+
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
             -VirtualMachineMigrationAuthenticationType "Kerberos"
@@ -177,10 +177,10 @@ function Domain-RemoteInfoInit
 
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
         Enable-VMMigration
-        CMD
-        winrm set winrm/config/service/auth @{CredSSP="true"}
-        winrm set winrm/config/service/auth @{Credential="true"}
-        exit
+
+        & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
+        & cmd /c 'winrm set winrm/config/service/auth @{Credential="true"}'
+
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
             -VirtualMachineMigrationAuthenticationType "Kerberos"
