@@ -163,6 +163,7 @@ function Domain-RemoteInfoInit
     $DomainDriverPath = $LocationInfo.Domain.DriverPath
     $DomainResultPath = $LocationInfo.Domain.ResultPath
 
+    Win-DebugTimestamp -output ("Init test ENV on target server....")
     Invoke-Command -ScriptBlock {
         Enable-VMMigration
         CMD
@@ -199,11 +200,12 @@ function Domain-RemoteInfoInit
 
     Win-DebugTimestamp -output ("{0}: Init base info ...." -f $LocationInfo.Domain.TargetServer)
     $DomainRemoteInfo = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-        Param($DomainDriverPath, $DomainResultPath, $BertaConfig)
+        Param($DomainDriverPath, $DomainResultPath, $BertaConfig, $TargetServer)
         $LocationInfo.HVMode = $true
         $LocationInfo.IsWin = $true
         $LocationInfo.VM.IsWin = $true
         $LocationInfo.WriteLogToConsole = $false
+        $BertaConfig["TargetServer"] = $TargetServer
 
         WBase-ReturnFilesInit `
             -BertaResultPath $DomainResultPath `
@@ -215,7 +217,32 @@ function Domain-RemoteInfoInit
                                -BertaConfig $BertaConfig | out-null
 
         return $LocationInfo
-    } -ArgumentList $DomainDriverPath, $DomainResultPath, $BertaConfig
+    } -ArgumentList $DomainDriverPath, $DomainResultPath, $BertaConfig, $env:COMPUTERNAME
+
+    Win-DebugTimestamp -output ("The info of {0}" -f $LocationInfo.Domain.TargetServer)
+    Win-DebugTimestamp -output ("              HVMode : {0}" -f $DomainRemoteInfo.HVMode)
+    Win-DebugTimestamp -output ("              UQMode : {0}" -f $DomainRemoteInfo.UQMode)
+    Win-DebugTimestamp -output ("            TestMode : {0}" -f $DomainRemoteInfo.TestMode)
+    Win-DebugTimestamp -output ("           DebugMode : {0}" -f $DomainRemoteInfo.DebugMode)
+    Win-DebugTimestamp -output ("        VerifierMode : {0}" -f $DomainRemoteInfo.VerifierMode)
+    Win-DebugTimestamp -output ("             QatType : {0}" -f $DomainRemoteInfo.QatType)
+    Win-DebugTimestamp -output ("        FriendlyName : {0}" -f $DomainRemoteInfo.FriendlyName)
+    Win-DebugTimestamp -output ("              Socket : {0}" -f $DomainRemoteInfo.Socket)
+    Win-DebugTimestamp -output ("           Socket2PF : {0}" -f $DomainRemoteInfo.Socket2PF)
+    Win-DebugTimestamp -output ("               PF2VF : {0}" -f $DomainRemoteInfo.PF2VF)
+    Win-DebugTimestamp -output ("            PFNumber : {0}" -f $DomainRemoteInfo.PF.Number)
+    Win-DebugTimestamp -output ("                 PFs : {0}" -f $DomainRemoteInfo.PF.PCI)
+    Win-DebugTimestamp -output ("     BertaResultPath : {0}" -f $DomainRemoteInfo.BertaResultPath)
+    Win-DebugTimestamp -output ("     PFQatDriverPath : {0}" -f $DomainRemoteInfo.PF.DriverPath)
+    Win-DebugTimestamp -output ("     PFQatDriverName : {0}" -f $DomainRemoteInfo.PF.DriverName)
+    Win-DebugTimestamp -output ("      PFQatDriverExe : {0}" -f $DomainRemoteInfo.PF.DriverExe)
+    Win-DebugTimestamp -output ("     VFQatDriverPath : {0}" -f $DomainRemoteInfo.VF.DriverPath)
+    Win-DebugTimestamp -output ("     VFQatDriverName : {0}" -f $DomainRemoteInfo.VF.DriverName)
+    Win-DebugTimestamp -output ("          IcpQatName : {0}" -f $DomainRemoteInfo.IcpQatName)
+    Win-DebugTimestamp -output ("   WriteLogToConsole : {0}" -f $DomainRemoteInfo.WriteLogToConsole)
+    Win-DebugTimestamp -output ("      WriteLogToFile : {0}" -f $DomainRemoteInfo.WriteLogToFile)
+    Win-DebugTimestamp -output ("     ExecutingServer : {0}" -f $DomainRemoteInfo.Domain.ExecutingServer)
+    Win-DebugTimestamp -output ("        TargetServer : {0}" -f $DomainRemoteInfo.Domain.TargetServer)
 
     return $DomainRemoteInfo
 }

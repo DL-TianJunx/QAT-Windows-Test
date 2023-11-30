@@ -639,6 +639,7 @@ function WBase-LocationInfoInit
     # Start trace log tool
     UT-TraceLogStart -Remote $false | out-null
 
+    Win-DebugTimestamp -output ("Local info:")
     Win-DebugTimestamp -output ("              HVMode : {0}" -f $LocationInfo.HVMode)
     Win-DebugTimestamp -output ("              UQMode : {0}" -f $LocationInfo.UQMode)
     Win-DebugTimestamp -output ("            TestMode : {0}" -f $LocationInfo.TestMode)
