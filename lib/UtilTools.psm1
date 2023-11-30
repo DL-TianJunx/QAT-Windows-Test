@@ -455,6 +455,10 @@ function UT-CheckDriverVerifier
         $LogKeyWord = "Host"
     }
 
+    Win-DebugTimestamp -output (
+        "{0}: Check driver verifier as {1}" -f $LogKeyWord, $CheckFlag
+    )
+
     if ($Remote) {
         $Verifier = Invoke-Command -Session $Session -ScriptBlock {
             Param($DriverVerifierArgs)
@@ -497,14 +501,18 @@ function UT-CheckDriverVerifier
     }
 
     if ($CheckFlag -eq $Verifier) {
+        Win-DebugTimestamp -output (
+            "{0}: Check driver verifier > passed" -f $LogKeyWord
+        )
+
         $ReturnValue = $true
     } else {
+        Win-DebugTimestamp -output (
+            "{0}: Check driver verifier > failed, will be reset" -f $LogKeyWord
+        )
+
         $ReturnValue = $false
     }
-
-    Win-DebugTimestamp -output (
-        "{0}: Check driver verifier > {1}" -f $LogKeyWord, $ReturnValue
-    )
 
     return $ReturnValue
 }
@@ -685,11 +693,13 @@ function UT-CheckDebugMode
     $GetValue = $null
 
     if ($Remote) {
+        $LogKeyWord = $Session.Name
         $GetValue = UTGetBCDEDITValue `
             -BCDEDITKey $GetKey `
             -Remote $Remote `
             -Session $Session
     } else {
+        $LogKeyWord = "Host"
         $GetValue = UTGetBCDEDITValue `
             -BCDEDITKey $GetKey `
             -Remote $Remote
@@ -709,13 +719,14 @@ function UT-CheckDebugMode
         }
     }
 
-    if ($Remote) {
+
+    if ($ReturnValue) {
         Win-DebugTimestamp -output (
-            "{0}: Check Debug mode > {1}" -f $Session.Name, $ReturnValue
+            "{0}: Check Debug mode > passed" -f $LogKeyWord
         )
     } else {
         Win-DebugTimestamp -output (
-            "Host: Check Debug mode > {0}" -f $ReturnValue
+            "{0}: Check Debug mode > failed, will be reset" -f $LogKeyWord
         )
     }
 
@@ -791,11 +802,13 @@ function UT-CheckTestMode
     $GetValue = $null
 
     if ($Remote) {
+        $LogKeyWord = $Session.Name
         $GetValue = UTGetBCDEDITValue `
             -BCDEDITKey $GetKey `
             -Remote $Remote `
             -Session $Session
     } else {
+        $LogKeyWord = "Host"
         $GetValue = UTGetBCDEDITValue `
             -BCDEDITKey $GetKey `
             -Remote $Remote
@@ -815,13 +828,13 @@ function UT-CheckTestMode
         }
     }
 
-    if ($Remote) {
+    if ($ReturnValue) {
         Win-DebugTimestamp -output (
-            "{0}: Check Test mode > {1}" -f $Session.Name, $ReturnValue
+            "{0}: Check Test mode > passed" -f $LogKeyWord
         )
     } else {
         Win-DebugTimestamp -output (
-            "Host: Check Test mode > {0}" -f $ReturnValue
+            "{0}: Check Test mode > failed, will be reset" -f $LogKeyWord
         )
     }
 
@@ -976,9 +989,15 @@ function UT-CheckUQMode
         $ReturnValue = $true
     }
 
-    Win-DebugTimestamp -output (
-        "{0}: Check UQ mode > {1}" -f $LogKeyWord, $ReturnValue
-    )
+    if ($ReturnValue) {
+        Win-DebugTimestamp -output (
+            "{0}: Check UQ mode > passed" -f $LogKeyWord
+        )
+    } else {
+        Win-DebugTimestamp -output (
+            "{0}: Check UQ mode > failed, will be reset" -f $LogKeyWord
+        )
+    }
 
     return $ReturnValue
 }
