@@ -168,7 +168,7 @@ function Domain-RemoteInfoInit
         Enable-VMMigration
 
         & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
-        & cmd /c 'winrm set winrm/config/service/auth @{Credential="true"}'
+        & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
 
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
@@ -179,7 +179,7 @@ function Domain-RemoteInfoInit
         Enable-VMMigration
 
         & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
-        & cmd /c 'winrm set winrm/config/service/auth @{Credential="true"}'
+        & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
 
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
