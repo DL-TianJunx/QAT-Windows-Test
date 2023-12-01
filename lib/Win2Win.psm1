@@ -37,7 +37,7 @@ function WTWRestartVMs
         }
     }
 
-    if ($WaitFlag) {
+    if ($WaitFlag -and $StopFlag) {
         Start-Sleep -Seconds 60
     }
 
@@ -53,8 +53,8 @@ function WTWRestartVMs
         }
     }
 
-    if ($WaitFlag) {
-        Start-Sleep -Seconds 100
+    if ($WaitFlag -and $StartFlag) {
+        Start-Sleep -Seconds 60
     }
 
     if ($SessionFlag) {
@@ -84,14 +84,11 @@ function WTWCreateVMs
 
 function WTWRemoveVMs
 {
-    Param(
-        [Parameter(Mandatory=$True)]
-        [array]$VMNameList
-    )
-
-    $VMNameList | ForEach-Object {
-        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        HV-RemoveVM -VMName $VMName | out-null
+    $VMList = Get-VM
+    if (-not [String]::IsNullOrEmpty($VMList)) {
+        Foreach ($VM in $VMList) {
+            HV-RemoveVM -VMName $VM.Name | out-null
+        }
     }
 }
 
@@ -111,7 +108,7 @@ function WTW-ENVInit
 
     if ($InitVM) {
         # Remove VMs
-        WTWRemoveVMs -VMNameList $VMNameList | out-null
+        WTWRemoveVMs | out-null
 
         # Create VMs
         WTWCreateVMs -VMNameList $VMNameList | out-null
@@ -123,7 +120,7 @@ function WTW-ENVInit
             -TurnOff $false `
             -StartFlag $true `
             -WaitFlag $true `
-            -SessionFlag $true `
+            -SessionFlag $false `
             -CheckFlag $false | out-null
     }
 
