@@ -1,11 +1,10 @@
 # Summary of KPT20 test
-This test suite is the testing encrypt and decrypt or signature and verify using `kpt_tool.exe` tool.
-And support generate wpk file.
-This kpt tool base on the QAT windows driver.
+This test suite is the testing `encrypt|decrypt` or `signature|verify` using `kpt_tool.exe` tool, and support generate wpk file.
+This `kpt` tool base on the QAT20 windows driver.
 
 
 # Before running the test suite
-## Ready to the QAT windows driver
+## Ready to the QAT20 windows driver
 #### Driver config file: `pfvf_build.txt`
 ```shell
 PF QAT2.0.W.2.0.0-00538
@@ -19,7 +18,7 @@ VF VF-driver-path\\QAT2.0.W.2.0.0-00538
 #### Driver `PDB` files: `CfQat.pdb` and `icp_qat4.pdb` and `CpmProvUser.pdb`
 #### Driver certificate: `qat_cert.cer`
 #### Driver `zip` file: `QAT2.0.W.2.x.x-xxxxx.zip`
-#### Install the Qat windows driver on the local host or hyper-v VMs.
+#### Install the Qat20 windows driver on the local host or hyper-v VMs.
 
 
 ## Generate the wpk file
@@ -69,7 +68,9 @@ With the `rsa` algorithm, will test input and payload files:
         -type: prime256, secp384r1 and secp521r1.
     payload file:
         -length: digest256, digest384, digest521, digest576.
-        -typs: 32 and 64 bytes.
+        -type: 32 and 64 bytes.
+    platform: host(UQ and NUQ) and hyper-v VM.
+    QAT device number: 4 and 8
 ```
 
 
@@ -98,5 +99,7 @@ With the `rsa` and `ecdsa` algorithm, will test input and payload files:
         -type: prime256, secp384r1 and secp521r1.
     payload file:
         -length: digest256, digest384, digest521, digest576.
-        -typs: 32 and 64 bytes.
+        -type: 32 and 64 bytes.
+    platform: host(UQ and NUQ) and hyper-v VM.
+    QAT device number: 4 and 8
 ```
