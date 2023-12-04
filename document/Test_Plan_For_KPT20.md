@@ -64,13 +64,11 @@ This operation just support the `rsa` algorithm.
 With the `rsa` algorithm, will test input and payload files:
 ```shell
     input file:
-        -length: 512, 1024, 2048, 4096 and 8192 bits.
-        -type: prime256, secp384r1 and secp521r1.
+        -length(rsa): 512, 1024, 2048, 4096 and 8192 bits.
     payload file:
         -length: digest256, digest384, digest521, digest576.
         -type: 32 and 64 bytes.
-    platform: host(UQ and NUQ) and hyper-v VM.
-    QAT device number: 4 and 8
+    platform: host(NUQ) and hyper-v VM.
 ```
 
 
@@ -95,11 +93,10 @@ This operation support the `rsa` and `ecdsa` algorithm.
 With the `rsa` and `ecdsa` algorithm, will test input and payload files:
 ```shell
     input file:
-        -length: 512, 1024, 2048, 4096 and 8192 bits.
-        -type: prime256, secp384r1 and secp521r1.
+        -length(rsa): 512, 1024, 2048, 4096 and 8192 bits.
+        -type(ecdsa): prime256, secp384r1 and secp521r1.
     payload file:
         -length: digest256, digest384, digest521, digest576.
         -type: 32 and 64 bytes.
-    platform: host(UQ and NUQ) and hyper-v VM.
-    QAT device number: 4 and 8
+    platform: host(NUQ) and hyper-v VM.
 ```
