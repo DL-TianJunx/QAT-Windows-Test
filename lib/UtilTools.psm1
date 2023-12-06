@@ -705,6 +705,10 @@ function UT-CheckDebugMode
             -Remote $Remote
     }
 
+    Win-DebugTimestamp -output (
+        "{0}: Check Debug mode as {1}" -f $LogKeyWord, $CheckFlag
+    )
+
     if ([String]::IsNullOrEmpty($GetValue)) {
         $ReturnValue = $true
     } else {
@@ -813,6 +817,10 @@ function UT-CheckTestMode
             -BCDEDITKey $GetKey `
             -Remote $Remote
     }
+
+    Win-DebugTimestamp -output (
+        "{0}: Check Test mode as {1}" -f $LogKeyWord, $CheckFlag
+    )
 
     if ([String]::IsNullOrEmpty($GetValue)) {
         $ReturnValue = $false
@@ -940,6 +948,10 @@ function UT-CheckUQMode
     } else {
         $LogKeyWord = "Host"
     }
+
+    Win-DebugTimestamp -output (
+        "{0}: Check UQ mode as {1}" -f $LogKeyWord, $CheckFlag
+    )
 
     $regeditKey = "HKLM:\SYSTEM\CurrentControlSet\Services\icp_qat4\UQ"
     $GetFlag = $false

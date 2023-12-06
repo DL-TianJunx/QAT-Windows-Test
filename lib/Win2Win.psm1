@@ -3,8 +3,6 @@ if (!$QATTESTPATH) {
     Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 }
 
-Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
-
 # About VMs
 function WTWRestartVMs
 {
@@ -70,18 +68,6 @@ function WTWRestartVMs
     }
 }
 
-function WTWCreateVMs
-{
-    Param(
-        [Parameter(Mandatory=$True)]
-        [array]$VMNameList
-    )
-
-    $VMNameList | ForEach-Object {
-        HV-CreateVM -VMNameSuffix $_ | out-null
-    }
-}
-
 function WTWRemoveVMs
 {
     $VMList = Get-VM
@@ -90,6 +76,287 @@ function WTWRemoveVMs
             HV-RemoveVM -VMName $VM.Name | out-null
         }
     }
+}
+
+function WTW-SetupVM
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$VMNameSuffix,
+
+        [Parameter(Mandatory=$True)]
+        [string]$InitVMInfo
+    )
+
+    $InitVMInfoTxt = Get-Content -Path $InitVMInfo -Raw
+    $global:LocationInfo = ConvertFrom-Json -InputObject $InitVMInfoTxt -AsHashtable
+
+    $LocationInfo.WriteLogToConsole = $true
+    $LocationInfo.WriteLogToFile = $false
+
+    # Create VMs
+    HV-CreateVM -VMNameSuffix $VMNameSuffix | out-null
+    $VMNameList = [System.Array] @()
+    $VMNameList += $VMNameSuffix
+
+    # Start VMs
+    WTWRestartVMs `
+        -VMNameList $VMNameList `
+        -StopFlag $false `
+        -TurnOff $false `
+        -StartFlag $true `
+        -WaitFlag $true `
+        -SessionFlag $false `
+        -CheckFlag $false | out-null
+
+    $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
+    $PSSessionName = ("Session_{0}" -f $VMNameSuffix)
+    $Session = HV-PSSessionCreate `
+        -VMName $VMName `
+        -PSName $PSSessionName `
+        -IsWin $true
+
+    # create test base path on VM
+    Invoke-Command -Session $Session -ScriptBlock {
+        Param($STVWinPath)
+        if (-not (Test-Path -Path $STVWinPath)) {
+            New-Item -Path $STVWinPath -ItemType Directory
+        }
+    } -ArgumentList $STVWinPath | out-null
+
+    # copy and unpack qat driver to VM
+    $HostQatDriverFullPath = "{0}\\{1}" -f
+        $LocalVFDriverPath,
+        $LocationInfo.VF.DriverName
+    $RemoteQatDriverFullPath = "{0}\\{1}" -f
+        $STVWinPath,
+        $LocationInfo.VF.DriverName
+    $RemoteQatDriverPath = "{0}\\{1}" -f
+        $STVWinPath,
+        $VMDriverInstallPath.InstallPath
+
+    Copy-Item `
+        -ToSession $Session `
+        -Path $HostQatDriverFullPath `
+        -Destination $RemoteQatDriverFullPath
+
+    Invoke-Command -Session $Session -ScriptBlock {
+        Param($RemoteQatDriverFullPath, $RemoteQatDriverPath)
+        if (Test-Path -Path $RemoteQatDriverPath) {
+            Get-Item -Path $RemoteQatDriverPath | Remove-Item -Recurse
+        }
+        New-Item -Path $RemoteQatDriverPath -ItemType Directory
+        Expand-Archive `
+            -Path $RemoteQatDriverFullPath `
+            -DestinationPath $RemoteQatDriverPath `
+            -Force `
+            -ErrorAction Stop
+    } -ArgumentList $RemoteQatDriverFullPath, $RemoteQatDriverPath | out-null
+
+    # Copy cert files
+    Invoke-Command -Session $Session -ScriptBlock {
+        Param($Certificate)
+        if (Test-Path -Path $Certificate.Remote) {
+            Get-Item -Path $Certificate.Remote | Remove-Item -Recurse
+        }
+    } -ArgumentList $Certificate | out-null
+
+    if (Test-Path -Path $Certificate.HostVF) {
+        Copy-Item `
+            -ToSession $Session `
+            -Path $Certificate.HostVF `
+            -Destination $Certificate.Remote
+    }
+
+    # Copy test files
+    Foreach ($Type in $TestFileNameArray.Type) {
+        if ($Type -eq "high") {continue}
+        Foreach ($Size in $TestFileNameArray.Size) {
+            $TestFileFullPath = "{0}\\{1}{2}.txt" -f $STVWinPath, $Type, $Size
+            if (-not (Invoke-Command -Session $Session -ScriptBlock {
+                    Param($TestFileFullPath)
+                    Test-Path -Path $TestFileFullPath
+                } -ArgumentList $TestFileFullPath)) {
+                Copy-Item `
+                    -ToSession $Session `
+                    -Path $TestFileFullPath `
+                    -Destination $TestFileFullPath
+            }
+        }
+    }
+
+    # Copy PDB files
+    Invoke-Command -Session $Session -ScriptBlock {
+        Param($TraceLogOpts)
+        if (Test-Path -Path $TraceLogOpts.TraceLogPath) {
+            Remove-Item `
+                -Path $TraceLogOpts.TraceLogPath `
+                -Recurse `
+                -Force `
+                -Exclude "*.etl" `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+        } else {
+            New-Item `
+                -Path $TraceLogOpts.TraceLogPath `
+                -ItemType Directory | out-null
+        }
+
+        New-Item `
+            -Path $TraceLogOpts.FMTPath `
+            -ItemType Directory | out-null
+
+        New-Item `
+            -Path $TraceLogOpts.PDBPath `
+            -ItemType Directory | out-null
+    } -ArgumentList $TraceLogOpts | out-null
+
+    $PDBIncludeFiles = @("*.pdb")
+    $PDBCopyPath = "{0}\\*" -f $LocalVFDriverPath
+    Copy-Item `
+        -ToSession $Session `
+        -Path $PDBCopyPath `
+        -Destination $TraceLogOpts.PDBPath `
+        -Include $PDBIncludeFiles `
+        -Recurse `
+        -Force `
+        -Confirm:$false `
+        -ErrorAction Stop | out-null
+
+    $RestartVMFlag = $false
+    # Check and set Test mode
+    $TestModeStatus = UT-CheckTestMode `
+        -CheckFlag $LocationInfo.TestMode `
+        -Session $Session `
+        -Remote $true
+    if (-not $TestModeStatus) {
+        UT-SetTestMode `
+            -TestMode $LocationInfo.TestMode `
+            -Session $Session `
+            -Remote $true | out-null
+
+        $RestartVMFlag = $true
+    }
+
+    # Check and set Debug mode
+    $DebugModeStatus = UT-CheckDebugMode `
+        -CheckFlag $LocationInfo.DebugMode `
+        -Session $Session `
+        -Remote $true
+    if (-not $DebugModeStatus) {
+        UT-SetDebugMode `
+            -DebugMode $LocationInfo.DebugMode `
+            -Session $Session `
+            -Remote $true | out-null
+
+        $RestartVMFlag = $true
+    }
+
+    # Check and set driver verifier
+    $DriverVerifierStatus = UT-CheckDriverVerifier `
+        -CheckFlag $LocationInfo.VerifierMode `
+        -Session $Session `
+        -Remote $true
+    if (-not $DriverVerifierStatus) {
+        UT-SetDriverVerifier `
+            -DriverVerifier $LocationInfo.VerifierMode `
+            -Session $Session `
+            -Remote $true | out-null
+
+        $RestartVMFlag = $true
+    }
+
+    # ReStart VM if needed
+    if ($RestartVMFlag) {
+        # reStart VMs
+        WTWRestartVMs `
+            -VMNameList $VMNameList `
+            -StopFlag $true `
+            -TurnOff $false `
+            -StartFlag $true `
+            -WaitFlag $true `
+            -SessionFlag $true | out-null
+    }
+
+    # Install qat cert
+    UT-SetCertificate `
+        -CertFile $Certificate.Remote `
+        -Session $Session `
+        -Remote $true
+
+    Win-DebugTimestamp -output (
+        "{0}: Install Qat driver on remote windows VM" -f $PSSessionName
+    )
+
+    # Install qat driver
+    $VMQatSetupPath = "{0}\\{1}\\{2}" -f
+        $STVWinPath,
+        $VMDriverInstallPath.InstallPath,
+        $VMDriverInstallPath.QatSetupPath
+
+    WBase-InstallAndUninstallQatDriver `
+        -Session $Session `
+        -SetupExePath $VMQatSetupPath `
+        -Operation $true `
+        -Remote $true `
+        -Wait $false `
+        -UQMode $LocationInfo.UQMode
+
+    WBase-WaitProcessToCompletedByName `
+        -ProcessName "QatSetup" `
+        -Session $Session `
+        -Remote $true | out-null
+
+    # Double check QAT driver installed
+    $CheckDriverResult = WBase-CheckDriverInstalled `
+        -Remote $true `
+        -Session $Session
+    if ($CheckDriverResult) {
+        $DoubleCheckDriverResult = WBase-DoubleCheckDriver `
+            -Remote $true `
+            -Session $Session
+        if (-not $DoubleCheckDriverResult) {
+            throw ("{0}: Qat driver installed is incorrect" -f $PSSessionName)
+        }
+    } else {
+        throw ("{0}: Qat driver is not installed" -f $PSSessionName)
+    }
+
+    # Double check QAT devices work well
+    $CheckFlag = WBase-CheckQatDevice `
+        -Remote $true `
+        -Session $Session `
+        -CheckStatus "OK"
+    if ($CheckFlag.result) {
+        Win-DebugTimestamp -output (
+            "{0}: The number of qat devices is correct > {1}" -f
+                $PSSessionName,
+                $CheckFlag.number
+        )
+    } else {
+        throw ("{0}: The number of QAT devices is incorrect" -f $PSSessionName)
+    }
+
+    # Check and set UQ mode
+    $DisableDeviceFlag = $false
+    $UQModeStatus = UT-CheckUQMode `
+        -CheckFlag $LocationInfo.UQMode `
+        -Remote $true `
+        -Session $Session
+    if (-not $UQModeStatus) {
+        UT-SetUQMode `
+            -UQMode $LocationInfo.UQMode `
+            -Remote $true `
+            -Session $Session | out-null
+
+        UT-WorkAround `
+            -Remote $true `
+            -Session $Session `
+            -DisableFlag $true | out-null
+    }
+
+    # Run tracelog
+    UT-TraceLogStart -Remote $true -Session $Session | out-null
 }
 
 # About test ENV init
@@ -105,333 +372,138 @@ function WTW-ENVInit
     HV-VMVFConfigInit -VMVFOSConfig $VMVFOSConfig | out-null
 
     $VMNameList = $LocationInfo.VM.NameArray
+    $ProcessList = [hashtable] @{}
+    $ProcessIDArray = [System.Array] @()
 
     if ($InitVM) {
         # Remove VMs
         WTWRemoveVMs | out-null
 
-        # Create VMs
-        WTWCreateVMs -VMNameList $VMNameList | out-null
-
-        # Start VMs
-        WTWRestartVMs `
-            -VMNameList $VMNameList `
-            -StopFlag $false `
-            -TurnOff $false `
-            -StartFlag $true `
-            -WaitFlag $true `
-            -SessionFlag $false `
-            -CheckFlag $false | out-null
-    }
-
-    # Copy Utils and qat windows driver
-    $VMNameList | ForEach-Object {
-        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $PSSessionName = ("Session_{0}" -f $_)
-        $Session = HV-PSSessionCreate `
-            -VMName $VMName `
-            -PSName $PSSessionName `
-            -IsWin $true
-
-        # create test base path on VM
-        Invoke-Command -Session $Session -ScriptBlock {
-            Param($STVWinPath)
-            if (-not (Test-Path -Path $STVWinPath)) {
-                New-Item -Path $STVWinPath -ItemType Directory
-            }
-        } -ArgumentList $STVWinPath | out-null
-
-        # copy and unpack qat driver to VM
-        $HostQatDriverFullPath = "{0}\\{1}" -f
-            $LocalVFDriverPath,
-            $LocationInfo.VF.DriverName
-        $RemoteQatDriverFullPath = "{0}\\{1}" -f
-            $STVWinPath,
-            $LocationInfo.VF.DriverName
-        $RemoteQatDriverPath = "{0}\\{1}" -f
-            $STVWinPath,
-            $VMDriverInstallPath.InstallPath
-
-        Copy-Item `
-            -ToSession $Session `
-            -Path $HostQatDriverFullPath `
-            -Destination $RemoteQatDriverFullPath
-
-        Invoke-Command -Session $Session -ScriptBlock {
-            Param($RemoteQatDriverFullPath, $RemoteQatDriverPath)
-            if (Test-Path -Path $RemoteQatDriverPath) {
-                Get-Item -Path $RemoteQatDriverPath | Remove-Item -Recurse
-            }
-            New-Item -Path $RemoteQatDriverPath -ItemType Directory
-            Expand-Archive `
-                -Path $RemoteQatDriverFullPath `
-                -DestinationPath $RemoteQatDriverPath `
-                -Force `
-                -ErrorAction Stop
-        } -ArgumentList $RemoteQatDriverFullPath, $RemoteQatDriverPath | out-null
-
-        # Copy cert files
-        Invoke-Command -Session $Session -ScriptBlock {
-            Param($Certificate)
-            if (Test-Path -Path $Certificate.Remote) {
-                Get-Item -Path $Certificate.Remote | Remove-Item -Recurse
-            }
-        } -ArgumentList $Certificate | out-null
-
-        if (Test-Path -Path $Certificate.HostVF) {
-            Copy-Item `
-                -ToSession $Session `
-                -Path $Certificate.HostVF `
-                -Destination $Certificate.Remote
-        }
-
-        # Copy test files
-        Foreach ($Type in $TestFileNameArray.Type) {
-            if ($Type -eq "high") {continue}
-            Foreach ($Size in $TestFileNameArray.Size) {
-                $TestFileFullPath = "{0}\\{1}{2}.txt" -f $STVWinPath, $Type, $Size
-                if (-not (Invoke-Command -Session $Session -ScriptBlock {
-                        Param($TestFileFullPath)
-                        Test-Path -Path $TestFileFullPath
-                    } -ArgumentList $TestFileFullPath)) {
-                    Copy-Item `
-                        -ToSession $Session `
-                        -Path $TestFileFullPath `
-                        -Destination $TestFileFullPath
-                }
-            }
-        }
-
-        # Copy PDB files
-        Invoke-Command -Session $Session -ScriptBlock {
-            Param($TraceLogOpts)
-            if (Test-Path -Path $TraceLogOpts.TraceLogPath) {
-                Remove-Item `
-                    -Path $TraceLogOpts.TraceLogPath `
-                    -Recurse `
-                    -Force `
-                    -Exclude "*.etl" `
-                    -Confirm:$false `
-                    -ErrorAction Stop | out-null
-            } else {
-                New-Item `
-                    -Path $TraceLogOpts.TraceLogPath `
-                    -ItemType Directory | out-null
-            }
-
-            New-Item `
-                -Path $TraceLogOpts.FMTPath `
-                -ItemType Directory | out-null
-
-            New-Item `
-                -Path $TraceLogOpts.PDBPath `
-                -ItemType Directory | out-null
-        } -ArgumentList $TraceLogOpts | out-null
-
-        $PDBIncludeFiles = @("*.pdb")
-        $PDBCopyPath = "{0}\\*" -f $LocalVFDriverPath
-        Copy-Item `
-            -ToSession $Session `
-            -Path $PDBCopyPath `
-            -Destination $TraceLogOpts.PDBPath `
-            -Include $PDBIncludeFiles `
-            -Recurse `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
-    }
-
-    # Check and set Test mode and Debug mode and driver verifier
-    $RestartVMFlag = $false
-    $VMNameList | ForEach-Object {
-        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $PSSessionName = ("Session_{0}" -f $_)
-        $Session = HV-PSSessionCreate `
-            -VMName $VMName `
-            -PSName $PSSessionName `
-            -IsWin $true
-
-        $TestModeStatus = UT-CheckTestMode `
-            -CheckFlag $LocationInfo.TestMode `
-            -Session $Session `
-            -Remote $true
-
-        if (-not $TestModeStatus) {
-            UT-SetTestMode `
-                -TestMode $LocationInfo.TestMode `
-                -Session $Session `
-                -Remote $true | out-null
-
-            $RestartVMFlag = $true
-        }
-
-        $DebugModeStatus = UT-CheckDebugMode `
-            -CheckFlag $LocationInfo.DebugMode `
-            -Session $Session `
-            -Remote $true
-
-        if (-not $DebugModeStatus) {
-            UT-SetDebugMode `
-                -DebugMode $LocationInfo.DebugMode `
-                -Session $Session `
-                -Remote $true | out-null
-
-            $RestartVMFlag = $true
-        }
-
-        $DriverVerifierStatus = UT-CheckDriverVerifier `
-            -CheckFlag $LocationInfo.VerifierMode `
-            -Session $Session `
-            -Remote $true
-
-        if (-not $DriverVerifierStatus) {
-            UT-SetDriverVerifier `
-                -DriverVerifier $LocationInfo.VerifierMode `
-                -Session $Session `
-                -Remote $true | out-null
-
-            $RestartVMFlag = $true
-        }
-    }
-
-    if ($RestartVMFlag) {
-        # reStart VMs
-        WTWRestartVMs `
-            -VMNameList $VMNameList `
-            -StopFlag $true `
-            -TurnOff $false `
-            -StartFlag $true `
-            -WaitFlag $true `
-            -SessionFlag $true | out-null
-    }
-
-    if ($InitVM) {
-        # Install qat driver on VMs
-        $VMNameList | ForEach-Object {
-            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            $PSSessionName = ("Session_{0}" -f $_)
-            $Session = HV-PSSessionCreate `
-                -VMName $VMName `
-                -PSName $PSSessionName `
-                -IsWin $true
-
-            UT-SetCertificate `
-                -CertFile $Certificate.Remote `
-                -Session $Session `
-                -Remote $true
-
+        # Check VHD file for VMs
+        $ParentsVM = "{0}\{1}.vhdx" -f
+            $VHDAndTestFiles.ParentsVMPath,
+            $LocationInfo.VM.ImageName
+        if (-not [System.IO.File]::Exists($ParentsVM)) {
             Win-DebugTimestamp -output (
-                "{0}: Install Qat driver on remote windows VM" -f $PSSessionName
+                "Copy Vhd file ({0}.vhdx) from remote {1}" -f
+                    $LocationInfo.VM.ImageName,
+                    $VHDAndTestFiles.SourceVMPath
             )
 
-            $VMQatSetupPath = "{0}\\{1}\\{2}" -f
-                $STVWinPath,
-                $VMDriverInstallPath.InstallPath,
-                $VMDriverInstallPath.QatSetupPath
+            $BertaSource = "{0}\\{1}.vhdx" -f
+                $VHDAndTestFiles.SourceVMPath,
+                $LocationInfo.VM.ImageName
+            $BertaDestination = "{0}\\{1}.vhdx" -f
+                $VHDAndTestFiles.ParentsVMPath,
+                $LocationInfo.VM.ImageName
 
-            WBase-InstallAndUninstallQatDriver `
-                -Session $Session `
-                -SetupExePath $VMQatSetupPath `
-                -Operation $true `
-                -Remote $true `
-                -Wait $false `
-                -UQMode $LocationInfo.UQMode
+            Copy-Item `
+                -Path $BertaSource `
+                -Destination $BertaDestination `
+                -Force `
+                -ErrorAction Stop | out-null
         }
 
-        # Wait qat driver to complete on VMs
+        # Start process of InitVM
+        $InitVMPath = "{0}\\InitVM" -f $STVWinPath
+        if (Test-Path -Path $InitVMPath) {
+            Remove-Item `
+                -Path $InitVMPath `
+                -Recurse `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+        }
+        New-Item -Path $InitVMPath -ItemType Directory | out-null
+
+        $InitVMInfo = "{0}\\LocationInfo.txt" -f $InitVMPath
+        if (Test-Path -Path $InitVMInfo) {
+            Remove-Item `
+                -Path $InitVMInfo `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+        }
+        $LocationInfo | ConvertTo-Json -Depth 5 | Out-File $InitVMInfo -Append -Encoding ascii
+
+        $RunPowershellPath = "C:\Program Files\PowerShell\7\pwsh.exe"
         $VMNameList | ForEach-Object {
-            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            $PSSessionName = ("Session_{0}" -f $_)
-            $Session = HV-PSSessionCreate `
-                -VMName $VMName `
-                -PSName $PSSessionName `
-                -IsWin $true
-
-            WBase-WaitProcessToCompleted `
-                -ProcessName "QatSetup" `
-                -Session $Session `
-                -Remote $true | out-null
-        }
-    }
-
-    # Double check QAT driver installed
-    $VMNameList | ForEach-Object {
-        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $PSSessionName = ("Session_{0}" -f $_)
-        $Session = HV-PSSessionCreate `
-            -VMName $VMName `
-            -PSName $PSSessionName `
-            -IsWin $true
-
-        $CheckDriverResult = WBase-CheckDriverInstalled `
-            -Remote $true `
-            -Session $Session
-        if ($CheckDriverResult) {
-            $DoubleCheckDriverResult = WBase-DoubleCheckDriver `
-                -Remote $true `
-                -Session $Session
-            if (-not $DoubleCheckDriverResult) {
-                throw ("{0}: Qat driver installed is incorrect" -f $PSSessionName)
+            $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+            $InitVMProcessArgs = "-Command WTW-SetupVM -VMNameSuffix {0} -InitVMInfo {1}" -f $_, $InitVMInfo
+            $InitVMOutputLog = "{0}\\OutputLog_{1}.txt" -f $InitVMPath, $_
+            if (Test-Path -Path $InitVMOutputLog) {
+                Remove-Item `
+                    -Path $InitVMOutputLog `
+                    -Force `
+                    -Confirm:$false `
+                    -ErrorAction Stop | out-null
             }
-        } else {
-            throw ("{0}: Qat driver is not installed" -f $PSSessionName)
+
+            $InitVMErrorLog = "{0}\\ErrorLog_{1}.txt" -f $InitVMPath, $_
+            if (Test-Path -Path $InitVMErrorLog) {
+                Remove-Item `
+                    -Path $InitVMErrorLog `
+                    -Force `
+                    -Confirm:$false `
+                    -ErrorAction Stop | out-null
+            }
+
+            if (-not [System.IO.File]::Exists($RunPowershellPath)) {
+                $RunPowershellPath = "powershell"
+            }
+
+            $InitVMProcess = Start-Process -FilePath $RunPowershellPath `
+                -ArgumentList $InitVMProcessArgs `
+                -RedirectStandardOutput $InitVMOutputLog `
+                -RedirectStandardError $InitVMErrorLog `
+                -NoNewWindow `
+                -PassThru
+
+            Win-DebugTimestamp -output (
+                "Host: Start init vm named '{0}' as process that id is {1}" -f
+                    $vmName,
+                    $InitVMProcess.ID
+            )
+
+            $ProcessList[$_] = [hashtable] @{
+                ID = $InitVMProcess.ID
+                Output = $InitVMOutputLog
+                Error = $InitVMErrorLog
+            }
+
+            $ProcessIDArray += $InitVMProcess.ID
         }
 
-        if ($InitVM) {
-            $CheckFlag = WBase-CheckQatDevice `
-                -Remote $true `
-                -Session $Session `
-                -CheckStatus "OK"
-            if ($CheckFlag.result) {
-                Win-DebugTimestamp -output (
-                    "{0}: The number of qat devices is correct > {1}" -f
-                        $PSSessionName,
-                        $CheckFlag.number
-                )
+        # Check output and error log for InitVM process
+        WBase-WaitProcessToCompletedByID `
+            -ProcessID $ProcessIDArray `
+            -Remote $false | out-null
+
+        $VMNameList | ForEach-Object {
+            $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+            Win-DebugTimestamp -output ("Host: The output log of init {0} ----------------" -f $vmName)
+
+            $ProcessResult = WBase-CheckProcessOutput `
+                -ProcessOutputLog $ProcessList[$_].Output `
+                -ProcessErrorLog $ProcessList[$_].Error `
+                -Remote $false
+
+            if ($ProcessResult) {
+                Win-DebugTimestamp -output ("Host: The init {0} is true" -f $vmName)
             } else {
-                throw ("{0}: The number of QAT devices is incorrect" -f $PSSessionName)
+                Win-DebugTimestamp -output ("Host: The init {0} is false" -f $vmName)
             }
         }
-    }
 
-    # Check and set UQ mode
-    $VMNameList | ForEach-Object {
-        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $PSSessionName = ("Session_{0}" -f $_)
-        $Session = HV-PSSessionCreate `
-            -VMName $VMName `
-            -PSName $PSSessionName `
-            -IsWin $true
-
-        $DisableDeviceFlag = $false
-        $UQModeStatus = UT-CheckUQMode `
-            -CheckFlag $LocationInfo.UQMode `
-            -Remote $true `
-            -Session $Session
-        if (-not $UQModeStatus) {
-            $DisableDeviceFlag = $true
-            UT-SetUQMode `
-                -UQMode $LocationInfo.UQMode `
-                -Remote $true `
-                -Session $Session | out-null
+        $VMNameList | ForEach-Object {
+            $PSSessionName = ("Session_{0}" -f $_)
+            $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+            HV-PSSessionCreate `
+                -VMName $vmName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false | out-null
         }
-
-        UT-WorkAround `
-            -Remote $true `
-            -Session $Session `
-            -DisableFlag $DisableDeviceFlag | out-null
-    }
-
-    # Run tracelog
-    $VMNameList | ForEach-Object {
-        $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $PSSessionName = ("Session_{0}" -f $_)
-        $Session = HV-PSSessionCreate `
-            -VMName $VMName `
-            -PSName $PSSessionName `
-            -IsWin $true
-
-        UT-TraceLogStart -Remote $true -Session $Session | out-null
     }
 }
 
@@ -924,7 +996,7 @@ function WTW-InstallerCheckBase
             -PSName $PSSessionName `
             -IsWin $true
 
-        WBase-WaitProcessToCompleted  -ProcessName "QatSetup" -Session $Session -Remote $true | out-null
+        WBase-WaitProcessToCompletedByName  -ProcessName "QatSetup" -Session $Session -Remote $true | out-null
     }
 
     # Double check QAT driver is uninstalled
@@ -1529,7 +1601,7 @@ function WTW-ParcompPerformance
         $PerformanceTestResultsList | ForEach-Object {
             if ($_.vm -eq $vmName) {
                 # Wait parcomp test process to complete
-                $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "parcomp" -Session $Session -Remote $true
+                $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "parcomp" -Session $Session -Remote $true
                 if ($_.result) {
                     $_.result = $WaitProcessFlag.result
                     $_.error = $WaitProcessFlag.error
@@ -1870,7 +1942,7 @@ function WTW-ParcompSWfallback
         $FallbackTestResultsList | ForEach-Object {
             if ($_.vm -eq $vmName) {
                 # Wait parcomp test process to complete
-                $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "parcomp" -Session $Session -Remote $true
+                $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "parcomp" -Session $Session -Remote $true
                 if ($_.result) {
                     $_.result = $WaitProcessFlag.result
                     $_.error = $WaitProcessFlag.error
@@ -2162,7 +2234,7 @@ function WTW-CNGTestBase
         $CNGTestResultsList | ForEach-Object {
             if ($_.vm -eq $vmName) {
                 # Wait cngtest test process to complete
-                $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Session $Session -Remote $true
+                $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Session $Session -Remote $true
                 if ($_.result) {
                     $_.result = $WaitProcessFlag.result
                     $_.error = $WaitProcessFlag.error
@@ -2347,7 +2419,7 @@ function WTW-CNGTestPerformance
         $CNGTestResultsList | ForEach-Object {
             if ($_.vm -eq $vmName) {
                 # Wait cngtest test process to complete
-                $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Session $Session -Remote $true
+                $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Session $Session -Remote $true
                 if ($_.result) {
                     $_.result = $WaitProcessFlag.result
                     $_.error = $WaitProcessFlag.error
@@ -2561,7 +2633,7 @@ function WTW-CNGTestSWfallback
         $CNGTestResultsList | ForEach-Object {
             if ($_.vm -eq $vmName) {
                 # Wait cngtest test process to complete
-                $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Session $Session -Remote $true
+                $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Session $Session -Remote $true
                 if ($_.result) {
                     $_.result = $WaitProcessFlag.result
                     $_.error = $WaitProcessFlag.error
@@ -2770,7 +2842,7 @@ function WTW-Stress
             $StressTestResultsList | ForEach-Object {
                 if ($_.vm -eq $vmName) {
                     # Wait parcomp test process to complete
-                    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "parcomp" -Session $Session -Remote $true
+                    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "parcomp" -Session $Session -Remote $true
                     if (!$WaitProcessFlag.result) {
                         $_.result = $WaitProcessFlag.result
                         $_.error = $WaitProcessFlag.error
@@ -2830,7 +2902,7 @@ function WTW-Stress
             $StressTestResultsList | ForEach-Object {
                 if ($_.vm -eq $vmName) {
                     # Wait cngtest test process to complete
-                    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Session $Session -Remote $true
+                    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Session $Session -Remote $true
                     if (!$WaitProcessFlag.result) {
                         $_.result = $WaitProcessFlag.result
                         $_.error = $WaitProcessFlag.error

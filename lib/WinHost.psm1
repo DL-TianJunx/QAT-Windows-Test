@@ -3,8 +3,6 @@ if (!$QATTESTPATH) {
     Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 }
 
-Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
-
 function WinHost-ENVInit
 {
     # Check QAT devices
@@ -772,7 +770,7 @@ function WinHost-ParcompPerformance
     }
 
     # Wait parcomp test process to complete
-    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "parcomp" -Remote $false
+    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "parcomp" -Remote $false
     if ($ReturnValue.result) {
         $ReturnValue.result = $WaitProcessFlag.result
         $ReturnValue.error = $WaitProcessFlag.error
@@ -1024,7 +1022,7 @@ function WinHost-ParcompSWfallback
     }
 
     # Wait parcomp test process to complete
-    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "parcomp" -Remote $false
+    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "parcomp" -Remote $false
     if ($ReturnValue.result) {
         $ReturnValue.result = $WaitProcessFlag.result
         $ReturnValue.error = $WaitProcessFlag.error
@@ -1227,7 +1225,7 @@ function WinHost-CNGTestBase
     }
 
     # Wait CNGTest test process to complete
-    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Remote $false
+    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Remote $false
     if ($ReturnValue.result) {
         $ReturnValue.result = $WaitProcessFlag.result
         $ReturnValue.error = $WaitProcessFlag.error
@@ -1340,7 +1338,7 @@ function WinHost-CNGTestPerformance
     }
 
     # Wait CNGTest test process to complete
-    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Remote $false
+    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Remote $false
     if ($ReturnValue.result) {
         $ReturnValue.result = $WaitProcessFlag.result
         $ReturnValue.error = $WaitProcessFlag.error
@@ -1491,7 +1489,7 @@ function WinHost-CNGTestSWfallback
     }
 
     # Wait CNGTest test process to complete
-    $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Remote $false
+    $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Remote $false
     if ($ReturnValue.result) {
         $ReturnValue.result = $WaitProcessFlag.result
         $ReturnValue.error = $WaitProcessFlag.error
@@ -1602,7 +1600,7 @@ function WinHost-Stress
 
     # Get test result
     if ($RunParcomp) {
-        $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "parcomp" -Remote $false
+        $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "parcomp" -Remote $false
         if ($ReturnValue.result) {
             $ReturnValue.result = $WaitProcessFlag.result
             $ReturnValue.error = $WaitProcessFlag.error
@@ -1641,7 +1639,7 @@ function WinHost-Stress
     }
 
     if ($RunCNGtest) {
-        $WaitProcessFlag = WBase-WaitProcessToCompleted -ProcessName "cngtest" -Remote $false
+        $WaitProcessFlag = WBase-WaitProcessToCompletedByName -ProcessName "cngtest" -Remote $false
         if ($ReturnValue.result) {
             $ReturnValue.result = $WaitProcessFlag.result
             $ReturnValue.error = $WaitProcessFlag.error

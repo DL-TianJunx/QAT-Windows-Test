@@ -8,14 +8,31 @@ Import-Module "$QATTESTPATH\\lib\\GlobalVariable.psm1" -Force -DisableNameChecki
 Import-Module "$QATTESTPATH\\lib\\HyperV.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\UtilTools.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\BertaTools.psm1" -Force -DisableNameChecking
+Import-Module "$QATTESTPATH\\lib\\Win2Linux.psm1" -Force -DisableNameChecking
+Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
+Import-Module "$QATTESTPATH\\lib\\Domain.psm1" -Force -DisableNameChecking
 
 # About Init
 function Win-DebugTimestamp
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$output
+        [string]$output,
+
+        [bool]$WriteLogToConsole = $false,
+
+        [bool]$WriteLogToFile = $false,
+
+        [string]$WriteLogFilePath = $null
     )
+
+    if ([String]::IsNullOrEmpty($WriteLogFilePath)) {
+        $WriteLogFilePath = $WinPowerShellLogFile
+    }
+
+    if (-not $WriteLogToConsole) {$WriteLogToConsole = $LocationInfo.WriteLogToConsole}
+    if (-not $WriteLogToFile) {$WriteLogToFile = $LocationInfo.WriteLogToFile}
 
     $CallStack = Get-PSCallStack
     if ($CallStack.Count -gt 1) {
@@ -28,14 +45,12 @@ function Win-DebugTimestamp
         $PowershellLog = ("{0}: {1}" -f (Get-Date -Format 'yyyy:MM:dd:hh:mm:ss:fff'), $output)
     }
 
-    if ($LocationInfo.WriteLogToConsole) {
+    if ($WriteLogToConsole) {
         Write-Host ($PowershellLog)
-    } else {
-        Write-Debug ($PowershellLog)
     }
 
-    if ($LocationInfo.WriteLogToFile) {
-        $PowershellLog | Out-File $WinPowerShellLogFile -Append -Encoding ascii
+    if ($WriteLogToFile) {
+        $PowershellLog | Out-File $WriteLogFilePath -Append -Encoding ascii
     }
 }
 
@@ -52,7 +67,6 @@ function WBase-ReturnFilesInit
     Set-Variable -Name "WinPowerShellLogFile" -Value ("{0}\\STVTest-ps.log" -f $BertaResultPath) -Scope global
     Set-Variable -Name "WinTestResultFile" -Value ("{0}\\{1}" -f $BertaResultPath, $ResultFile) -Scope global
     Set-Variable -Name "WinTestResultCsv" -Value ("{0}\\result.csv" -f $BertaResultPath) -Scope global
-    $LocationInfo.WriteLogToFile = $true
 
     if (Test-Path -Path $WinPowerShellLogFile) {
         for ($i = 0; $i -lt 1000; $i++) {
@@ -659,8 +673,6 @@ function WBase-LocationInfoInit
     Win-DebugTimestamp -output ("     VFQatDriverPath : {0}" -f $LocationInfo.VF.DriverPath)
     Win-DebugTimestamp -output ("     VFQatDriverName : {0}" -f $LocationInfo.VF.DriverName)
     Win-DebugTimestamp -output ("          IcpQatName : {0}" -f $LocationInfo.IcpQatName)
-    Win-DebugTimestamp -output ("   WriteLogToConsole : {0}" -f $LocationInfo.WriteLogToConsole)
-    Win-DebugTimestamp -output ("      WriteLogToFile : {0}" -f $LocationInfo.WriteLogToFile)
     Win-DebugTimestamp -output ("     ExecutingServer : {0}" -f $LocationInfo.Domain.ExecutingServer)
     Win-DebugTimestamp -output ("        TargetServer : {0}" -f $LocationInfo.Domain.TargetServer)
 }
@@ -1468,9 +1480,9 @@ function WBase-InstallAndUninstallQatDriver
 
     if ($Wait) {
         if ($Remote) {
-            WBase-WaitProcessToCompleted -ProcessName "QatSetup" -Session $Session -Remote $true | out-null
+            WBase-WaitProcessToCompletedByName -ProcessName "QatSetup" -Session $Session -Remote $true | out-null
         } else {
-            WBase-WaitProcessToCompleted -ProcessName "QatSetup" -Remote $false | out-null
+            WBase-WaitProcessToCompletedByName -ProcessName "QatSetup" -Remote $false | out-null
         }
     }
 
@@ -1713,7 +1725,7 @@ function WBase-CheckProcessNumber
     return $ReturnValue
 }
 
-function WBase-WaitProcessToCompleted
+function WBase-WaitProcessToCompletedByName
 {
     Param(
         [Parameter(Mandatory=$True)]
@@ -1777,6 +1789,157 @@ function WBase-WaitProcessToCompleted
         Win-DebugTimestamp -output (
             "{0}: The '{1}' process is completed" -f $LogKeyWord, $ProcessName
         )
+    }
+
+    return $ReturnValue
+}
+
+function WBase-WaitProcessToCompletedByID
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [array]$ProcessID,
+
+        [bool]$Remote = $true,
+
+        [object]$Session = $null
+    )
+
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+    }
+
+    if ($Remote) {
+        $LogKeyWord = $Session.Name
+        $ProcessError = $null
+        $ProcessStatus = Invoke-Command -Session $Session -ScriptBlock {
+            Param($ProcessID)
+            Get-Process -ID $ProcessID 2>&1
+        } -ArgumentList $ProcessID
+    } else {
+        $LogKeyWord = "Host"
+        $ProcessError = $null
+        $ProcessStatus = Get-Process -ID $ProcessID `
+                                     -ErrorAction SilentlyContinue `
+                                     -ErrorVariable ProcessError
+    }
+
+    if ([String]::IsNullOrEmpty($ProcessError)) {
+        Win-DebugTimestamp -output (
+            "{0}: The process is not completed and wait" -f $LogKeyWord
+        )
+
+        if ($Remote) {
+            $waitProcessStop = Invoke-Command -Session $Session -ScriptBlock {
+                Param($ProcessID)
+                wait-process -ID $ProcessID -Timeout 20000 2>&1
+                Start-Sleep -Seconds 5
+            } -ArgumentList $ProcessID
+        } else {
+            $waitProcessStop = wait-process -ID $ProcessID -Timeout 20000 2>&1
+            Start-Sleep -Seconds 5
+        }
+
+        if ($waitParcompStop -match "is not stopped in the specified time-out") {
+            Win-DebugTimestamp -output (
+                "{0}: The process is timeout" -f $LogKeyWord
+            )
+            $ReturnValue.result = $false
+            $ReturnValue.error = "process_timeout"
+        }
+    }
+
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output (
+            "{0}: The process is completed" -f $LogKeyWord
+        )
+    }
+
+    return $ReturnValue
+}
+
+function WBase-CheckProcessOutput
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$ProcessOutputLog,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ProcessErrorLog,
+
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [object]$Session = $null
+    )
+
+    $ReturnValue = $false
+
+    if ($Remote) {
+        $LogKeyWord = $Session.Name
+
+        $ProcessOutputLog = Invoke-Command -Session $Session -ScriptBlock {
+            Param($ProcessOutputLog)
+            if (Test-Path -Path $ProcessOutputLog) {
+                $ReturnValue = Get-Content -Path $ProcessOutputLog -Raw
+            } else {
+                $ReturnValue = $null
+            }
+
+            return $ReturnValue
+        } -ArgumentList $ProcessOutputLog
+
+        $ProcessErrorLog = Invoke-Command -Session $Session -ScriptBlock {
+            Param($ProcessErrorLog)
+            if (Test-Path -Path $ProcessErrorLog) {
+                $ReturnValue = Get-Content -Path $ProcessErrorLog -Raw
+            } else {
+                $ReturnValue = $null
+            }
+
+            return $ReturnValue
+        } -ArgumentList $ProcessErrorLog
+    } else {
+        $LogKeyWord = "Host"
+
+        if (Test-Path -Path $ProcessOutputLog) {
+            $ProcessOutputLog = Get-Content -Path $ProcessOutputLog -Raw
+        } else {
+            $ProcessOutputLog = $null
+        }
+
+        if (Test-Path -Path $ProcessErrorLog) {
+            $ProcessErrorLog = Get-Content -Path $ProcessErrorLog -Raw
+        } else {
+            $ProcessErrorLog = $null
+        }
+    }
+
+    if ([String]::IsNullOrEmpty($ProcessOutputLog)) {
+        if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
+            $ReturnValue = $false
+            Win-DebugTimestamp -output (
+                "{0}: Can not get output and error log of the process" -f $LogKeyWord
+            )
+        } else {
+            $ReturnValue = $false
+            Win-DebugTimestamp -output (
+                "{0}: Get error log of the process > {1}" -f $LogKeyWord, $ProcessErrorLog
+            )
+        }
+    } else {
+        if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
+            $ReturnValue = $true
+            Win-DebugTimestamp -output (
+                "{0}: Get output log of the process > {1}" -f $LogKeyWord, $ProcessOutputLog
+            )
+        } else {
+            $ReturnValue = $false
+            Win-DebugTimestamp -output (
+                "{0}: Get error log of the process > {1}" -f $LogKeyWord, $ProcessErrorLog
+            )
+        }
     }
 
     return $ReturnValue

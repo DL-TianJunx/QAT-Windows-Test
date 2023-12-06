@@ -139,7 +139,7 @@ $global:RemoteUserConfig =  [hashtable] @{
     UserName = "administrator"
     Password = "root.1234"
     RootName = "root"
-    DomainUserName = "QATWSTV_Domain\Administrator"
+    DomainUserName = "QATWSTV_Domain.cc\Administrator"
 }
 
 $global:WTWSecPassword = ConvertTo-SecureString `
@@ -347,8 +347,8 @@ $global:LocationInfo = [hashtable] @{
     VerifierMode = $null
     QatType = $null
     BertaResultPath = $null
-    WriteLogToConsole = $false
-    WriteLogToFile = $false
+    WriteLogToConsole = $true
+    WriteLogToFile = $true
     FriendlyName = $null
     IcpQatName = $null
     Socket = 0
@@ -390,8 +390,8 @@ $global:LocationInfo = [hashtable] @{
             Name = "PSSession_Domain"
             Session = $null
         }
-        DriverPath = "C:\\Domain_QAT_driver"
-        ResultPath = "C:\\Domain_test_result"
+        DriverPath = "C:\Domain_QAT_driver"
+        ResultPath = "C:\Domain_test_result"
     }
 }
 

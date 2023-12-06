@@ -3,8 +3,6 @@ if (!$QATTESTPATH) {
     Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 }
 
-Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
-
 function WTLSendPassWord
 {
     Param(
@@ -522,6 +520,30 @@ function WTL-ENVInit
     if ($InitVM) {
         # Remove VMs
         WTLRemoveVMs | out-null
+
+        $ParentsVM = "{0}\{1}.vhdx" -f
+            $VHDAndTestFiles.ParentsVMPath,
+            $LocationInfo.VM.ImageName
+        if (-not [System.IO.File]::Exists($ParentsVM)) {
+            Win-DebugTimestamp -output (
+                "Copy Vhd file ({0}.vhdx) from remote {1}" -f
+                    $LocationInfo.VM.ImageName,
+                    $VHDAndTestFiles.SourceVMPath
+            )
+
+            $BertaSource = "{0}\\{1}.vhdx" -f
+                $VHDAndTestFiles.SourceVMPath,
+                $LocationInfo.VM.ImageName
+            $BertaDestination = "{0}\\{1}.vhdx" -f
+                $VHDAndTestFiles.ParentsVMPath,
+                $LocationInfo.VM.ImageName
+
+            Copy-Item `
+                -Path $BertaSource `
+                -Destination $BertaDestination `
+                -Force `
+                -ErrorAction Stop | out-null
+        }
 
         # Create VMs
         WTLCreateVMs -VMNameList $VMNameList | out-null

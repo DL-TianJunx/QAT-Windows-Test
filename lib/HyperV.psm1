@@ -530,29 +530,6 @@ function HV-CreateVM
     Win-DebugTimestamp -output ("Create new VM named {0}" -f $VMName)
 
     try {
-        if ([System.IO.File]::Exists($ParentsVM)) {
-            Win-DebugTimestamp -output ("Use local Vhd file ({0})" -f $ParentsVM)
-        } else {
-            Win-DebugTimestamp -output (
-                "Copy Vhd file ({0}.vhdx) from remote {1}" -f
-                    $LocationInfo.VM.ImageName,
-                    $VHDAndTestFiles.SourceVMPath
-            )
-
-            $BertaSource = "{0}\\{1}.vhdx" -f
-                $VHDAndTestFiles.SourceVMPath,
-                $LocationInfo.VM.ImageName
-            $BertaDestination = "{0}\\{1}.vhdx" -f
-                $VHDAndTestFiles.ParentsVMPath,
-                $LocationInfo.VM.ImageName
-
-            Copy-Item `
-                -Path $BertaSource `
-                -Destination $BertaDestination `
-                -Force `
-                -ErrorAction Stop | out-null
-        }
-
         Win-DebugTimestamp -output (
             "Create child VHD {0} from parent VHD {1}" -f $ChildVM, $ParentsVM
         )
