@@ -67,6 +67,7 @@ function WBase-ReturnFilesInit
     Set-Variable -Name "WinPowerShellLogFile" -Value ("{0}\\STVTest-ps.log" -f $BertaResultPath) -Scope global
     Set-Variable -Name "WinTestResultFile" -Value ("{0}\\{1}" -f $BertaResultPath, $ResultFile) -Scope global
     Set-Variable -Name "WinTestResultCsv" -Value ("{0}\\result.csv" -f $BertaResultPath) -Scope global
+    $LocationInfo.WriteLogToFile = $true
 
     if (Test-Path -Path $WinPowerShellLogFile) {
         for ($i = 0; $i -lt 1000; $i++) {
