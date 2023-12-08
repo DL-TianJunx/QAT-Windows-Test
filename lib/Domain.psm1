@@ -3,8 +3,6 @@ if (!$QATTESTPATH) {
     Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 }
 
-Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
-
 function DomainCopyDir
 {
     Param(
@@ -167,8 +165,8 @@ function Domain-RemoteInfoInit
     Invoke-Command -ScriptBlock {
         Enable-VMMigration
 
-        & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
-        & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
+        # & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
+        # & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
 
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
@@ -178,8 +176,8 @@ function Domain-RemoteInfoInit
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
         Enable-VMMigration
 
-        & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
-        & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
+        # & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
+        # & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
 
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
@@ -239,8 +237,6 @@ function Domain-RemoteInfoInit
     Win-DebugTimestamp -output ("     VFQatDriverPath : {0}" -f $DomainRemoteInfo.VF.DriverPath)
     Win-DebugTimestamp -output ("     VFQatDriverName : {0}" -f $DomainRemoteInfo.VF.DriverName)
     Win-DebugTimestamp -output ("          IcpQatName : {0}" -f $DomainRemoteInfo.IcpQatName)
-    Win-DebugTimestamp -output ("   WriteLogToConsole : {0}" -f $DomainRemoteInfo.WriteLogToConsole)
-    Win-DebugTimestamp -output ("      WriteLogToFile : {0}" -f $DomainRemoteInfo.WriteLogToFile)
     Win-DebugTimestamp -output ("     ExecutingServer : {0}" -f $DomainRemoteInfo.Domain.ExecutingServer)
     Win-DebugTimestamp -output ("        TargetServer : {0}" -f $DomainRemoteInfo.Domain.TargetServer)
 
@@ -571,7 +567,7 @@ function Domain-LiveMParcomp
                             -IsWin $true `
                             -CheckFlag $false
 
-                        $WaitProcessFlag = WBase-WaitProcessToCompleted `
+                        $WaitProcessFlag = WBase-WaitProcessToCompletedByName `
                             -ProcessName "parcomp" `
                             -Session $Session `
                             -Remote $true
