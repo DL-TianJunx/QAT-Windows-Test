@@ -28,7 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -104,11 +108,11 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $CNGTestPathName = "CNGTest"
+    $TestType = "Performance"
     $RunIterations = 1
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Performance"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -166,10 +170,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Performance" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
             $BanchMarkFile = "{0}\\banchmark\\WTW_{1}_{2}_{3}_cngtest_banchmark.log" -f
                 $QATTESTPATH,
                 $LocationInfo.QatType,
@@ -225,7 +230,7 @@ try {
                             "--------- > {0} time" -f $RunIteration
                         )
 
-                        $CNGTestResult = WTW-CNGTestPerformance `
+                        $CNGTestResult = WTW-CNGTest `
                             -algo $TestCase.Algo `
                             -operation $TestCase.Operation `
                             -provider $TestCase.Provider `
@@ -234,8 +239,7 @@ try {
                             -ecccurve $TestCase.Ecccurve `
                             -numThreads $TestCase.Thread `
                             -numIter $TestCase.Iteration `
-                            -TestPathName $CNGTestPathName `
-                            -BertaResultPath $BertaResultPath
+                            -TestType $TestType
 
                         Win-DebugTimestamp -output (
                             "Get performance value on {0} time > {1}" -f

@@ -26,7 +26,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -97,9 +101,10 @@ try {
     )
     $parcompFlag = $true
     $cngtestFlag = $true
+    $TestType = "installer_files"
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Base"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Installer"
     }
 
     # Special: For QAT17
@@ -157,10 +162,10 @@ try {
 
                 Win-DebugTimestamp -output ("Start to run test case....")
                 Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
-                $TestResultList = WTW-InstallerCheckBase `
+                $TestResultList = WTW-Installer `
                     -parcompFlag $parcompFlag `
                     -cngtestFlag $cngtestFlag `
-                    -BertaResultPath $BertaResultPath
+                    -TestType $TestType
             }
 
             Foreach ($InstallerType in $InstallerTypes) {

@@ -1,7 +1,3 @@
-if (!$QATTESTPATH) {
-    $TestSuitePath = Split-Path -Parent (Split-Path -Path $PSCommandPath)
-    Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
-}
 
 function WTLSendPassWord
 {
@@ -1112,7 +1108,7 @@ function WTL-CheckOutput
                 "{0}: Output log > {1}" -f $PSSessionName, $TestOutputLog
             )
 
-            $CheckOutputFlag = WBase-CheckOutputLog -OutputLog $TestOutputLog
+            $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $TestOutputLog
             if ($CheckOutputFlag) {
                 $TestCaseList[$TestCaseName] = [hashtable] @{
                     result = $true

@@ -1,7 +1,3 @@
-if (!$QATTESTPATH) {
-    $TestSuitePath = Split-Path -Parent (Split-Path -Path $PSCommandPath)
-    Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
-}
 
 function DomainCopyDir
 {
@@ -610,7 +606,7 @@ function Domain-LiveMParcomp
                                 -PSName $PSSessionName `
                                 -IsWin $true
 
-                            $CheckOutput = WBase-CheckOutput `
+                            $CheckOutput = WBase-CheckOutputLog `
                                 -TestOutputLog $CompressTestOutLogPath `
                                 -TestErrorLog $CompressTestErrorLogPath `
                                 -Session $Session `
@@ -646,7 +642,7 @@ function Domain-LiveMParcomp
                                 -PSName $PSSessionName `
                                 -IsWin $true
 
-                            $CheckOutput = WBase-CheckOutput `
+                            $CheckOutput = WBase-CheckOutputLog `
                                 -TestOutputLog $deCompressTestOutLogPath `
                                 -TestErrorLog $deCompressTestErrorLogPath `
                                 -Session $Session `

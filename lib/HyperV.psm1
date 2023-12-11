@@ -204,7 +204,7 @@ function HV-PSSessionCheck
 function HV-GenerateVMVFConfig
 {
     Param(
-        [string]$ConfigType = "Base",
+        [string]$ConfigType = "Base_Parameter",
 
         [hashtable]$RemoteInfo = $null
     )
@@ -222,9 +222,18 @@ function HV-GenerateVMVFConfig
     }
 
     Foreach ($VMOS in $VMOSs) {
-        if ($ConfigType -eq "Base") {
-            $VMVFOSName = "3vm_{0}vf_{1}" -f $LocationInfo.PF.Number, $VMOS
-            $ReturnValue += $VMVFOSName
+        if (($ConfigType -eq "Base_Parameter") -or
+            ($ConfigType -eq "Base_Compat") -or
+            ($ConfigType -eq "Performance_Parameter") -or
+            ($ConfigType -eq "Installer") -or
+            ($ConfigType -eq "Fallback")) {
+            if (($ConfigType -eq "Base_Parameter") -or
+                ($ConfigType -eq "Base_Compat") -or
+                ($ConfigType -eq "Installer") -or
+                ($ConfigType -eq "Fallback")) {
+                $VMVFOSName = "3vm_{0}vf_{1}" -f $LocationInfo.PF.Number, $VMOS
+                $ReturnValue += $VMVFOSName
+            }
 
             $AllVFs = $LocationInfo.PF.Number * $LocationInfo.PF2VF
             $VMNumber = [Math]::Truncate($AllVFs / 64)
@@ -232,13 +241,7 @@ function HV-GenerateVMVFConfig
             $VMVFOSName = "{0}vm_64vf_{1}" -f $VMNumber, $VMOS
             $ReturnValue += $VMVFOSName
         } elseif ($ConfigType -eq "Performance") {
-            $VMVFOSName = "3vm_{0}vf_{1}" -f ($LocationInfo.PF.Number * 2), $VMOS
-            $ReturnValue += $VMVFOSName
-        } elseif ($ConfigType -eq "PerfParameter") {
-            $AllVFs = $LocationInfo.PF.Number * $LocationInfo.PF2VF
-            $VMNumber = [Math]::Truncate($AllVFs / 64)
-            if ($VMNumber -gt 2) {$VMNumber = 2}
-            $VMVFOSName = "{0}vm_64vf_{1}" -f $VMNumber, $VMOS
+            $VMVFOSName = "1vm_{0}vf_{1}" -f ($LocationInfo.PF.Number * 2), $VMOS
             $ReturnValue += $VMVFOSName
         } elseif ($ConfigType -eq "SmokeTest") {
             $VMVFOSName = "1vm_{0}vf_{1}" -f $LocationInfo.PF.Number, $VMOS

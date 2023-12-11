@@ -28,7 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -112,10 +116,10 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $TestFilefullPath = $null
+    $TestType = "Fallback"
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Base"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -171,10 +175,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Fallback" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
 
             if (-not $CompareFlag) {
                 Win-DebugTimestamp -output ("Initialize test environment....")
@@ -185,7 +190,7 @@ try {
             }
 
             Foreach ($TestCase in $TestCaseList) {
-                Foreach ($TestType in $AllTestType.Operation) {
+                Foreach ($TestOperationType in $AllTestType.Operation) {
                     # deCompress: qatgzip not support -k -t -Q
                     if ($TestCase.Provider -eq "qatgzip") {
                         if (($TestCase.CompressType -eq "deCompress") -or
@@ -217,7 +222,7 @@ try {
                             $TestCase.CompressionType
                     }
 
-                    $testName = "{0}_{1}" -f $testName, $TestType
+                    $testName = "{0}_{1}" -f $testName, $TestOperationType
 
                     if ($CompareFlag) {
                         $TestCaseResultsList = [hashtable] @{
@@ -233,21 +238,20 @@ try {
                         Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
                         $LocationInfo.TestCaseName = $testName
 
-                        $SWFallbackTestResult = WTW-ParcompSWfallback `
-                            -CompressType $TestCase.CompressType `
+                        $SWFallbackTestResult = WTW-Parcomp `
                             -CompressProvider $TestCase.Provider `
                             -deCompressProvider $TestCase.Provider `
                             -QatCompressionType $TestCase.CompressionType `
                             -Level $TestCase.CompressionLevel `
+                            -Chunk $TestCase.Chunk `
+                            -blockSize $TestCase.Block `
                             -numThreads $TestCase.Thread `
                             -numIterations $TestCase.Iteration `
-                            -blockSize $TestCase.Block `
-                            -Chunk $TestCase.Chunk `
-                            -TestFilefullPath $TestFilefullPath `
-                            -BertaResultPath $BertaResultPath `
                             -TestFileType $TestCase.TestFileType `
                             -TestFileSize $TestCase.TestFileSize `
-                            -TestType $TestType
+                            -TestType $TestType `
+                            -TestOperationType $TestOperationType `
+                            -CompressType $TestCase.CompressType
 
                         if ($SWFallbackTestResult.result) {
                             $SWFallbackTestResult.result = $TestResultToBerta.Pass

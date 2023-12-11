@@ -1,9 +1,5 @@
-# Global Variables
-if (!$QATTESTPATH) {
-    $TestSuitePath = Split-Path -Parent (Split-Path -Path $PSCommandPath)
-    Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
-}
 
+# Global Variables
 Set-Variable -Name "STVWinPath" -Value "C:\\STV-tmp" -Scope global
 Set-Variable -Name "STVLinuxPath" -Value "/home/administrator/STV-tmp" -Scope global
 
@@ -14,6 +10,8 @@ $global:AdfCtlExe = "{0}\\utils\\adf_ctl.exe" -f $QATTESTPATH
 $global:LocalPFDriverPath = "{0}\\PFDriver" -f $STVWinPath
 $global:LocalVFDriverPath = "{0}\\VFDriver" -f $STVWinPath
 $global:LocalLinuxPath = "{0}\\Linux" -f $STVWinPath
+$global:LocalProcessPath = "{0}\\Process" -f $STVWinPath
+$global:LocalProcessKeyFilePath = "{0}\\LocationInfo.txt" -f $LocalProcessPath
 
 # About QAT driver
 $global:Certificate = [hashtable] @{

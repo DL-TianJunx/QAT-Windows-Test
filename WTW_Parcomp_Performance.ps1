@@ -28,7 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -93,7 +97,7 @@ try {
         [System.Array]$ParcompCompressionLevel = (1)
         [System.Array]$ParcompChunk = (8, 64, 128)
         [System.Array]$ParcompBlock = (4096)
-        [System.Array]$ParcompThread = (8)
+        [System.Array]$ParcompThread = (16)
         [System.Array]$ParcompIteration = (200)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
@@ -110,13 +114,11 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $TestPathName = "ParcompTest"
     $TestType = "Performance"
-    $TestFilefullPath = $null
     $RunIterations = 1
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Performance"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -174,10 +176,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Performance" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
             $BanchMarkFile = "{0}\\banchmark\\WTW_{1}_{2}_{3}_parcomp_banchmark.log" -f
                 $QATTESTPATH,
                 $LocationInfo.QatType,
@@ -249,19 +252,16 @@ try {
                             "--------- > {0} time" -f $RunIteration
                         )
 
-                        $PerformanceTestResult = WTW-ParcompPerformance `
+                        $PerformanceTestResult = WTW-Parcomp `
                             -deCompressFlag $deCompressFlag `
                             -CompressProvider $TestCase.Provider `
                             -deCompressProvider $TestCase.Provider `
                             -QatCompressionType $TestCase.CompressionType `
                             -Level $TestCase.CompressionLevel `
                             -Chunk $TestCase.Chunk `
+                            -blockSize $TestCase.Block `
                             -numThreads $TestCase.Thread `
                             -numIterations $TestCase.Iteration `
-                            -blockSize $TestCase.Block `
-                            -TestPathName $TestPathName `
-                            -TestFilefullPath $TestFilefullPath `
-                            -BertaResultPath $BertaResultPath `
                             -TestFileType $TestCase.TestFileType `
                             -TestFileSize $TestCase.TestFileSize `
                             -TestType $TestType

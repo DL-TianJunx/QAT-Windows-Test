@@ -1249,7 +1249,7 @@ function UT-Use7z
         Win-DebugTimestamp -output ("Host: Output log of 7z tool is null")
         $ReturnValue = $false
     } else {
-        $CheckOutputFlag = WBase-CheckOutputLog -OutputLog $OutputLog
+        $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $OutputLog
         if ($CheckOutputFlag) {
             Win-DebugTimestamp -output ("Host: Use 7z tool is passed")
             $ReturnValue = $true
@@ -1258,6 +1258,8 @@ function UT-Use7z
             $ReturnValue = $false
         }
     }
+
+    Start-Sleep -Seconds 10
 
     return $ReturnValue
 }

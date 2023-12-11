@@ -28,7 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -93,7 +97,7 @@ try {
         [System.Array]$ParcompCompressionLevel = (1)
         [System.Array]$ParcompChunk = (256)
         [System.Array]$ParcompBlock = (1024, 2048, 4096, 8192)
-        [System.Array]$ParcompThread = (64)
+        [System.Array]$ParcompThread = (32)
         [System.Array]$ParcompIteration = (800)
         [System.Array]$ParcompCompressionType = ("dynamic")
         [System.Array]$TestFileNameArray.Type = ("calgary")
@@ -113,12 +117,10 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $TestPathName = "ParcompTest"
-    $TestType = "Parameter"
-    $TestFilefullPath = $null
+    $TestType = "Performance_Parameter"
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "PerfParameter"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -174,10 +176,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Perf_Parameter" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
 
             if (-not $CompareFlag) {
                 Win-DebugTimestamp -output ("Initialize test environment....")
@@ -236,19 +239,16 @@ try {
                     Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
                     $LocationInfo.TestCaseName = $testName
 
-                    $PerformanceTestResult = WTW-ParcompPerformance `
+                    $PerformanceTestResult = WTW-Parcomp `
                         -deCompressFlag $deCompressFlag `
                         -CompressProvider $TestCase.Provider `
                         -deCompressProvider $TestCase.Provider `
                         -QatCompressionType $TestCase.CompressionType `
                         -Level $TestCase.CompressionLevel `
                         -Chunk $TestCase.Chunk `
+                        -blockSize $TestCase.Block `
                         -numThreads $TestCase.Thread `
                         -numIterations $TestCase.Iteration `
-                        -blockSize $TestCase.Block `
-                        -TestPathName $TestPathName `
-                        -TestFilefullPath $TestFilefullPath `
-                        -BertaResultPath $BertaResultPath `
                         -TestFileType $TestCase.TestFileType `
                         -TestFileSize $TestCase.TestFileSize `
                         -TestType $TestType

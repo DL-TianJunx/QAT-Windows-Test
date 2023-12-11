@@ -24,7 +24,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -104,9 +108,7 @@ try {
         [System.Array]$TestFileNameArray.Size = $AnalyzeResult.Parcomp.TestFileSize
     }
 
-    $TestPathName = "ParcompTest"
     $TestType = "Performance"
-    $TestFilefullPath = $null
     $RunIterations = 1
 
     # Special: For QAT17
@@ -248,8 +250,6 @@ try {
                         -numThreads $TestCase.Thread `
                         -numIterations $TestCase.Iteration `
                         -blockSize $TestCase.Block `
-                        -TestPathName $TestPathName `
-                        -TestFilefullPath $TestFilefullPath `
                         -BertaResultPath $BertaResultPath `
                         -TestFileType $TestCase.TestFileType `
                         -TestFileSize $TestCase.TestFileSize `

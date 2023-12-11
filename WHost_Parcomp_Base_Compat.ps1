@@ -22,8 +22,12 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
 Import-Module $STVMainDll -Force -DisableNameChecking
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -104,7 +108,6 @@ try {
     $QatCompressionType = "dynamic"
     $CompressionLevel = 1
     $ChunkSize = 64
-    $TestPathName = "ParcompTest"
     $TestFileType = "calgary"
     $TestFileSize = 200
     $TestType = "Compat"
@@ -221,8 +224,6 @@ try {
                     -QatCompressionType $QatCompressionType `
                     -Level $CompressionLevel `
                     -Chunk $ChunkSize `
-                    -TestPathName $TestPathName `
-                    -TestFilefullPath $SourceFile `
                     -BertaResultPath $BertaResultPath `
                     -TestFileType $TestFileType `
                     -TestFileSize $TestFileSize `

@@ -26,8 +26,12 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
 Import-Module $STVMainDll -Force -DisableNameChecking
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -108,13 +112,15 @@ try {
     $QatCompressionType = "dynamic"
     $CompressionLevel = 1
     $ChunkSize = 64
-    $TestPathName = "ParcompTest"
+    $blockSize = 4096
+    $numThreads = 1
+    $numIterations = 10
     $TestFileType = "calgary"
     $TestFileSize = 200
-    $TestType = "Compat"
+    $TestType = "Base_Compat"
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Base"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -179,10 +185,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Base_Compat" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
 
             if (-not $CompareFlag) {
                 Win-DebugTimestamp -output ("Initialize test environment....")
@@ -213,16 +220,16 @@ try {
                 } else {
                     $LocationInfo.TestCaseName = $testName
 
-                    $ParcompBaseTestResult = WTW-ParcompBase `
+                    $ParcompBaseTestResult = WTW-Parcomp `
                         -deCompressFlag $deCompressFlag `
                         -CompressProvider $CompressProvider `
                         -deCompressProvider $deCompressProvider `
                         -QatCompressionType $QatCompressionType `
                         -Level $CompressionLevel `
                         -Chunk $ChunkSize `
-                        -TestPathName $TestPathName `
-                        -TestFilefullPath $SourceFile `
-                        -BertaResultPath $BertaResultPath `
+                        -blockSize $blockSize `
+                        -numThreads $numThreads `
+                        -numIterations $numIterations `
                         -TestFileType $TestFileType `
                         -TestFileSize $TestFileSize `
                         -TestType $TestType

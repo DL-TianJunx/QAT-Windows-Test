@@ -28,7 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -106,10 +110,10 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $CNGTestPathName = "CNGTest"
+    $TestType = "Fallback"
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "Base"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -167,10 +171,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Fallback" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
 
             if (-not $CompareFlag) {
                 Win-DebugTimestamp -output ("Initialize test environment....")
@@ -181,7 +186,7 @@ try {
             }
 
             Foreach ($TestCase in $TestCaseList) {
-                Foreach ($TestType in $AllTestType.Operation) {
+                Foreach ($TestOperationType in $AllTestType.Operation) {
                     $testName = "{0}_{1}_{2}_Thread{3}_Iteration{4}_{5}" -f
                         $testNameHeader,
                         $TestCase.Provider,
@@ -200,7 +205,7 @@ try {
                         $testName = "{0}_{1}" -f $testName, $TestCase.Padding
                     }
 
-                    $testName = "{0}_{1}" -f $testName, $TestType
+                    $testName = "{0}_{1}" -f $testName, $TestOperationType
 
                     if ($CompareFlag) {
                         $TestCaseResultsList = [hashtable] @{
@@ -216,7 +221,7 @@ try {
                         Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
                         $LocationInfo.TestCaseName = $testName
 
-                        $CNGTestResult = WTW-CNGTestSWfallback `
+                        $CNGTestResult = WTW-CNGTest `
                             -algo $TestCase.Algo `
                             -operation $TestCase.Operation `
                             -provider $TestCase.Provider `
@@ -225,9 +230,8 @@ try {
                             -ecccurve $TestCase.Ecccurve `
                             -numThreads $TestCase.Thread `
                             -numIter $TestCase.Iteration `
-                            -TestPathName $CNGTestPathName `
-                            -BertaResultPath $BertaResultPath `
-                            -TestType $TestType
+                            -TestType $TestType `
+                            -TestOperationType $TestOperationType
 
                         if ($CNGTestResult.result) {
                             $CNGTestResult.result = $TestResultToBerta.Pass

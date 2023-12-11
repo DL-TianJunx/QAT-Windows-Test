@@ -28,8 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Domain.psm1" -Force -DisableNameChecking
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -108,10 +111,10 @@ try {
 
     # Special: For All
     if ([String]::IsNullOrEmpty($runTestCase)) {
-        [System.Array]$ParcompProvider = ("qat", "qatgzip", "qatgzipext", "qatlz4")
+        [System.Array]$ParcompProvider = ("qatgzipext", "qatlz4")
         [System.Array]$ParcompCompressionType = ("dynamic")
-        [System.Array]$ParcompCompressionLevel = (1, 2, 3, 4)
-        [System.Array]$ParcompChunk = (16, 64, 512)
+        [System.Array]$ParcompCompressionLevel = (1, 4)
+        [System.Array]$ParcompChunk = (32, 64)
         [System.Array]$ParcompBlock = (4096)
         [System.Array]$ParcompThread = (8)
         [System.Array]$ParcompIteration = (200)

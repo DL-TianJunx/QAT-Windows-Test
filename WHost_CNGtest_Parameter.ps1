@@ -24,7 +24,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -96,8 +100,6 @@ try {
         [System.Array]$CNGTestThread = $AnalyzeResult.CNGTest.Thread
     }
 
-    $CNGTestPathName = "CNGTest"
-
     # Special: For QAT17
     if ($LocationInfo.QatType -eq "QAT17") {
         if ($LocationInfo.UQMode) {
@@ -153,7 +155,7 @@ try {
             $UQString = "NUQ"
         }
 
-        $testNameHeader = "Regression_Host_{0}_{1}_Perf_Parameter" -f
+        $testNameHeader = "Regression_Host_{0}_{1}_Performance_Parameter" -f
             $LocationInfo.QatType,
             $UQString
 
@@ -199,7 +201,6 @@ try {
                     -ecccurve $TestCase.Ecccurve `
                     -numThreads $TestCase.Thread `
                     -numIter $TestCase.Iteration `
-                    -TestPathName $CNGTestPathName `
                     -BertaResultPath $BertaResultPath
 
                 if ($CNGTestResult.result) {

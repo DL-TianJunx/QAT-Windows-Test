@@ -1,7 +1,3 @@
-if (!$QATTESTPATH) {
-    $TestSuitePath = Split-Path -Parent (Split-Path -Path $PSCommandPath)
-    Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
-}
 
 function WinHost-ENVInit
 {
@@ -47,108 +43,6 @@ function WinHost-ENVInit
 }
 
 # About base test
-function WinHostCheckMD5
-{
-    Param(
-        [bool]$deCompressFlag = $false,
-
-        [string]$CompressProvider = "qat",
-
-        [string]$deCompressProvider = "qat",
-
-        [string]$QatCompressionType = "dynamic",
-
-        [int]$Level = 1,
-
-        [int]$Chunk = 64,
-
-        [string]$TestPathName = $null,
-
-        [string]$TestFileType = "high",
-
-        [int]$TestFileSize = 200
-    )
-
-    $ReturnValue = [hashtable] @{
-        SourceFile = $null
-        OutFile = $null
-    }
-
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $ParcompOpts.PathName
-    }
-
-    $TestSourceFile = "{0}\\{1}{2}.txt" -f $STVWinPath, $TestFileType, $TestFileSize
-    $TestParcompPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
-    $deCompressPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.MD5PathName
-    $TestParcompOutFileList = @()
-    $deCompressSourceFileList = @()
-    $TestParcompOutFileMD5List = @()
-
-    if (Test-Path -Path $deCompressPath) {
-        Get-Item -Path $deCompressPath | Remove-Item -Recurse
-    }
-    New-Item -Path $deCompressPath -ItemType Directory
-
-    $TestParcompOutFileArray = Get-ChildItem -Path $TestParcompPath
-    $TestParcompOutFileArray | ForEach-Object {
-        if (($_.Name -ne $ParcompOpts.OutputLog) -and
-            ($_.Name -ne $ParcompOpts.ErrorLog) -and
-            ($_.Name -ne $ParcompOpts.InputFileName)) {
-            $TestParcompOutFileList += $_.FullName
-
-            if (!$deCompressFlag) {
-                $deCompressSourceFile = "{0}\\{1}" -f $deCompressPath, $_.Name
-                $deCompressSourceFileList += $deCompressSourceFile
-                Copy-Item -Path $_.FullName -Destination $deCompressSourceFile
-            }
-        }
-    }
-
-    $TestSourceFileMD5 = Invoke-Command -ScriptBlock {
-        Param($TestSourceFile)
-        certutil -hashfile $TestSourceFile MD5
-    } -ArgumentList $TestSourceFile
-    $TestSourceFileMD5 = ($TestSourceFileMD5).split("\n")[1]
-
-    if ($deCompressFlag) {
-        ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
-            $TestParcompOutFileMD5 = Invoke-Command -ScriptBlock {
-                Param($TestParcompOutFile)
-                certutil -hashfile $TestParcompOutFile MD5
-            } -ArgumentList $TestParcompOutFile
-            $TestParcompOutFileMD5 = ($TestParcompOutFileMD5).split("\n")[1]
-            $TestParcompOutFileMD5List += $TestParcompOutFileMD5
-        }
-    } else {
-        $TestParcompOutFile = "{0}\\{1}" -f $TestParcompPath, $ParcompOpts.OutputFileName
-        ForEach ($deCompressSourceFile in $deCompressSourceFileList) {
-            $deCompressOut = WBase-Parcomp -Side "host" `
-                                           -deCompressFlag $true `
-                                           -CompressProvider $CompressProvider `
-                                           -deCompressProvider $deCompressProvider `
-                                           -QatCompressionType $QatCompressionType `
-                                           -Level $Level `
-                                           -Chunk $Chunk `
-                                           -TestPathName $TestPathName `
-                                           -TestFilelocation "VM" `
-                                           -TestFilefullPath $deCompressSourceFile
-
-            $TestParcompOutFileMD5 = Invoke-Command -ScriptBlock {
-                Param($TestParcompOutFile)
-                certutil -hashfile $TestParcompOutFile MD5
-            } -ArgumentList $TestParcompOutFile
-            $TestParcompOutFileMD5 = ($TestParcompOutFileMD5).split("\n")[1]
-            $TestParcompOutFileMD5List += $TestParcompOutFileMD5
-        }
-    }
-
-    $ReturnValue.SourceFile = $TestSourceFileMD5
-    $ReturnValue.OutFile = $TestParcompOutFileMD5List
-
-    return $ReturnValue
-}
-
 function WinHostErrorHandle
 {
     Param(
@@ -482,7 +376,7 @@ function WinHost-ParcompBase
 
         [string]$TestFilefullPath = $null,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
         [string]$BertaResultPath = "C:\\temp",
 
@@ -502,8 +396,8 @@ function WinHost-ParcompBase
         $STVWinPath,
         $TestFileType,
         $TestFileSize
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $ParcompOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
 
     # Run tracelog
@@ -531,7 +425,7 @@ function WinHost-ParcompBase
                                        -QatCompressionType $QatCompressionType `
                                        -Level $Level `
                                        -Chunk $Chunk `
-                                       -TestPathName $TestPathName `
+                                       -TestPath $TestPath `
                                        -TestFilefullPath $TestFilefullPath `
                                        -TestFileType $TestFileType `
                                        -TestFileSize $TestFileSize
@@ -545,93 +439,22 @@ function WinHost-ParcompBase
         Win-DebugTimestamp -output (
             "Host: Double check the output file of {0} test" -f $TestType
         )
-        $TestParcompOutFile = "{0}\\{1}\\{2}" -f
-            $STVWinPath,
-            $TestPathName,
-            $ParcompOpts.OutputFileName
 
-        # The parcomp operation is Compress, need to deCompress the output file and check the match
-        if ($deCompressProvider -eq "7zip") {
-            $TestdeCompressPath = "{0}\\{1}" -f
-                $STVWinPath,
-                $ParcompOpts.sevenZipPathName
-            if (-not (Test-Path -Path $TestdeCompressPath)) {
-                New-Item -Path $TestdeCompressPath -ItemType Directory
-            }
-            Copy-Item -Path $TestParcompOutFile -Destination $TestdeCompressPath
+        $CheckMD5Result = WBase-CheckOutputFile `
+            -Remote $false `
+            -deCompressFlag $deCompressFlag `
+            -CompressProvider $CompressProvider `
+            -deCompressProvider $deCompressProvider `
+            -QatCompressionType $QatCompressionType `
+            -Level $Level `
+            -Chunk $Chunk `
+            -TestPath $TestPath `
+            -TestFileType $TestFileType `
+            -TestFileSize $TestFileSize
 
-            $TestdeCompressInFile = "{0}\\{1}" -f
-                $TestdeCompressPath,
-                $ParcompOpts.OutputFileName
-            $TestdeCompressOutFile = "{0}\\{1}" -f
-                $TestdeCompressPath,
-                ($ParcompOpts.OutputFileName).split(".")[0]
-            if (Test-Path -Path $TestdeCompressOutFile) {
-                Get-Item -Path $TestdeCompressOutFile | Remove-Item -Recurse
-            }
-
-            Win-DebugTimestamp -output (
-                "Host: deCompress the output file of {0} test > {1}" -f
-                    $TestType,
-                    $sevenZipExe
-            )
-            $Use7zflag = UT-Use7z -InFile $TestdeCompressInFile -OutFile $TestdeCompressPath
-            $Use7zflagTmp = $null
-            if (!($Use7zflag.gettype().Name -eq "Boolean")) {
-                Foreach ($Member in $Use7zflag) {
-                    if ($Member.gettype().Name -eq "Boolean") {
-                        $Use7zflagTmp = $Member
-                    }
-                }
-
-                $Use7zflag = $Use7zflagTmp
-            }
-
-            if ($Use7zflag) {
-                Win-DebugTimestamp -output ("Host: The deCompress test is passed")
-                $TestParcompOutFileMD5 = certutil -hashfile $TestdeCompressOutFile MD5
-                $TestParcompOutFileMD5 = ($TestParcompOutFileMD5).split("\n")[1]
-
-                $TestSourceFileMD5 = Invoke-Command -ScriptBlock {
-                    Param($TestSourceFile)
-                    certutil -hashfile $TestSourceFile MD5
-                } -ArgumentList $TestSourceFile
-                $TestSourceFileMD5 = ($TestSourceFileMD5).split("\n")[1]
-            } else {
-                Win-DebugTimestamp -output ("Host: The deCompress test is failed")
-                $ReturnValue.result = $false
-                $ReturnValue.error = "decompress_7zip_failed"
-                return
-            }
-        } else {
-            $CheckMD5Result = WinHostCheckMD5 -deCompressFlag $deCompressFlag `
-                                              -CompressProvider $CompressProvider `
-                                              -deCompressProvider $deCompressProvider `
-                                              -QatCompressionType $QatCompressionType `
-                                              -Level $Level `
-                                              -Chunk $Chunk `
-                                              -TestPathName $TestPathName `
-                                              -TestFileType $TestFileType `
-                                              -TestFileSize $TestFileSize
-
-            if (($CheckMD5Result.OutFile).gettype().Name -eq "String") {
-                $TestParcompOutFileMD5 = $CheckMD5Result.OutFile
-            } else {
-                $TestParcompOutFileMD5 = $CheckMD5Result.OutFile[0]
-            }
-
-            $TestSourceFileMD5 = $CheckMD5Result.SourceFile
-        }
-
-        Win-DebugTimestamp -output ("Host: The MD5 value of source file > {0}" -f $TestSourceFileMD5)
-        Win-DebugTimestamp -output ("Host: The MD5 value of {0} test output file > {1}" -f $TestType, $TestParcompOutFileMD5)
-
-        if ($TestParcompOutFileMD5 -eq $TestSourceFileMD5) {
-            Win-DebugTimestamp -output ("Host: The output file of {0} test and the source file are matched" -f $TestType)
-        } else {
-            Win-DebugTimestamp -output ("Host: The output file of {0} test and the source file are not matched" -f $TestType)
-            $ReturnValue.result = $false
-            $ReturnValue.error = "MD5_no_matched"
+        if ($ReturnValue.result -and !$CheckMD5Result.result) {
+            $ReturnValue.result = $CheckMD5Result.result
+            $ReturnValue.error = $CheckMD5Result.error
         }
     } else {
         Win-DebugTimestamp -output ("Host: Skip checking the output file of {0} test, because Error > {1}" -f $TestType, $ReturnValue.error)
@@ -703,7 +526,7 @@ function WinHost-ParcompPerformance
 
         [string]$TestFilefullPath = $null,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
         [string]$BertaResultPath = "C:\\temp",
 
@@ -726,10 +549,10 @@ function WinHost-ParcompPerformance
     $runParcompType = "Process"
 
     $TestSourceFile = "{0}\\{1}{2}.txt" -f $STVWinPath, $TestFileType, $TestFileSize
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $ParcompOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
-    $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
+
     $TestParcompInFile = "{0}\\{1}" -f $TestPath, $ParcompOpts.InputFileName
     $TestParcompOutFile = "{0}\\{1}" -f $TestPath, $ParcompOpts.OutputFileName
     $TestParcompOutLog = "{0}\\{1}" -f $TestPath, $ParcompOpts.OutputLog
@@ -757,7 +580,7 @@ function WinHost-ParcompPerformance
                                        -numIterations $numIterations `
                                        -ParcompType $ParcompType `
                                        -runParcompType $runParcompType `
-                                       -TestPathName $TestPathName `
+                                       -TestPath $TestPath `
                                        -TestFilefullPath $TestFilefullPath `
                                        -TestFileType $TestFileType `
                                        -TestFileSize $TestFileSize
@@ -777,7 +600,7 @@ function WinHost-ParcompPerformance
     }
 
     # Check parcomp test result
-    $CheckOutput = WBase-CheckOutput `
+    $CheckOutput = WBase-CheckOutputLog `
         -TestOutputLog $TestParcompOutLog `
         -TestErrorLog $TestParcompErrorLog `
         -Remote $false `
@@ -791,36 +614,22 @@ function WinHost-ParcompPerformance
         # Double check the output files
         if ($ReturnValue.result) {
             Win-DebugTimestamp -output ("Host: Double check the output file of performance test ({0})" -f $TestType)
-            $MD5MatchFlag = $true
+            $CheckMD5Result = WBase-CheckOutputFile `
+                -Remote $false `
+                -deCompressFlag $deCompressFlag `
+                -CompressProvider $CompressProvider `
+                -deCompressProvider $deCompressProvider `
+                -QatCompressionType $QatCompressionType `
+                -Level $Level `
+                -Chunk $Chunk `
+                -blockSize $blockSize `
+                -TestPath $TestPath `
+                -TestFileType $TestFileType `
+                -TestFileSize $TestFileSize
 
-            # The parcomp operation is Compress, need to deCompress the output file and check the match
-            $CheckMD5Result = WinHostCheckMD5 -deCompressFlag $deCompressFlag `
-                                              -CompressProvider $CompressProvider `
-                                              -deCompressProvider $deCompressProvider `
-                                              -QatCompressionType $QatCompressionType `
-                                              -Level $Level `
-                                              -Chunk $Chunk `
-                                              -TestFileType $TestFileType `
-                                              -TestFileSize $TestFileSize `
-                                              -TestPathName $TestPathName
-
-            $TestSourceFileMD5 = $CheckMD5Result.SourceFile
-            Win-DebugTimestamp -output ("Host: The MD5 value of source file > {0}" -f $TestSourceFileMD5)
-            $FileCount = 0
-            ForEach ($TestParcompOutFileMD5 in $CheckMD5Result.OutFile) {
-                Win-DebugTimestamp -output ("Host: The MD5 value of performance test ({0}) output file {1} > {2}" -f $TestType,
-                                                                                                                     $FileCount,
-                                                                                                                     $TestParcompOutFileMD5)
-                $FileCount++
-                if ($TestParcompOutFileMD5 -ne $TestSourceFileMD5) {$MD5MatchFlag = $false}
-            }
-            if ($MD5MatchFlag) {
-                Win-DebugTimestamp -output ("Host: The output file of performance test ({0}) and the source file are matched" -f $TestType)
-            } else {
-                Win-DebugTimestamp -output ("Host: The output file of performance test ({0}) and the source file are not matched" -f $TestType)
-
-                $ReturnValue.result = $false
-                $ReturnValue.error = "MD5_no_matched"
+            if ($ReturnValue.result -and !$CheckMD5Result.result) {
+                $ReturnValue.result = $CheckMD5Result.result
+                $ReturnValue.error = $CheckMD5Result.error
             }
         } else {
             Win-DebugTimestamp -output ("Host: Skip checking the output files of performance test ({0}), because Error > {1}" -f $TestType, $ReturnValue.error)
@@ -920,8 +729,8 @@ function WinHost-ParcompSWfallback
 
     $ParcompType = "Fallback"
     $runParcompType = "Process"
-    $CompressTestPath = $ParcompOpts.CompressPathName
-    $deCompressTestPath = $ParcompOpts.deCompressPathName
+    $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
+    $deCompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
 
     # Run tracelog
     UT-TraceLogStart -Remote $false | out-null
@@ -946,7 +755,7 @@ function WinHost-ParcompSWfallback
                                               -numIterations $numIterations `
                                               -ParcompType $ParcompType `
                                               -runParcompType $runParcompType `
-                                              -TestPathName $deCompressTestPath `
+                                              -TestPath $deCompressTestPath `
                                               -TestFilefullPath $TestFilefullPath `
                                               -TestFileType $TestFileType `
                                               -TestFileSize $TestFileSize
@@ -968,7 +777,7 @@ function WinHost-ParcompSWfallback
                                             -numIterations $numIterations `
                                             -ParcompType $ParcompType `
                                             -runParcompType $runParcompType `
-                                            -TestPathName $CompressTestPath `
+                                            -TestPath $CompressTestPath `
                                             -TestFilefullPath $TestFilefullPath `
                                             -TestFileType $TestFileType `
                                             -TestFileSize $TestFileSize
@@ -1029,13 +838,13 @@ function WinHost-ParcompSWfallback
     }
 
     # Check parcomp test result
-    $CompressTestOutLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $CompressTestPath, $ParcompOpts.OutputLog
-    $CompressTestErrorLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $CompressTestPath, $ParcompOpts.ErrorLog
-    $deCompressTestOutLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $deCompressTestPath, $ParcompOpts.OutputLog
-    $deCompressTestErrorLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $deCompressTestPath, $ParcompOpts.ErrorLog
+    $CompressTestOutLogPath = "{0}\\{1}" -f $CompressTestPath, $ParcompOpts.OutputLog
+    $CompressTestErrorLogPath = "{0}\\{1}" -f $CompressTestPath, $ParcompOpts.ErrorLog
+    $deCompressTestOutLogPath = "{0}\\{1}" -f $deCompressTestPath, $ParcompOpts.OutputLog
+    $deCompressTestErrorLogPath = "{0}\\{1}" -f $deCompressTestPath, $ParcompOpts.ErrorLog
 
     if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-        $CheckOutput = WBase-CheckOutput `
+        $CheckOutput = WBase-CheckOutputLog `
             -TestOutputLog $CompressTestOutLogPath `
             -TestErrorLog $CompressTestErrorLogPath `
             -Remote $false `
@@ -1048,7 +857,7 @@ function WinHost-ParcompSWfallback
     }
 
     if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
-        $CheckOutput = WBase-CheckOutput `
+        $CheckOutput = WBase-CheckOutputLog `
             -TestOutputLog $deCompressTestOutLogPath `
             -TestErrorLog $deCompressTestErrorLogPath `
             -Remote $false `
@@ -1064,63 +873,43 @@ function WinHost-ParcompSWfallback
     if ($ReturnValue.result) {
         if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
             Win-DebugTimestamp -output ("Host: Double check the output file of fallback test (compress)")
-            $MD5MatchFlag = $true
-            $CheckMD5Result = WinHostCheckMD5 -deCompressFlag $false `
-                                              -CompressProvider $CompressProvider `
-                                              -deCompressProvider $deCompressProvider `
-                                              -QatCompressionType $QatCompressionType `
-                                              -Level $Level `
-                                              -Chunk $Chunk `
-                                              -TestFileType $TestFileType `
-                                              -TestFileSize $TestFileSize `
-                                              -TestPathName $CompressTestPath
+            $CheckMD5Result = WBase-CheckOutputFile `
+                -Remote $false `
+                -deCompressFlag $false `
+                -CompressProvider $CompressProvider `
+                -deCompressProvider $deCompressProvider `
+                -QatCompressionType $QatCompressionType `
+                -Level $Level `
+                -Chunk $Chunk `
+                -blockSize $blockSize `
+                -TestPath $CompressTestPath `
+                -TestFileType $TestFileType `
+                -TestFileSize $TestFileSize
 
-            $TestSourceFileMD5 = $CheckMD5Result.SourceFile
-            Win-DebugTimestamp -output ("Host: The MD5 value of source file > {0}" -f $TestSourceFileMD5)
-            $FileCount = 0
-            ForEach ($TestParcompOutFileMD5 in $CheckMD5Result.OutFile) {
-                Win-DebugTimestamp -output ("Host: The MD5 value of fallback test (compress) output file {0} > {1}" -f $FileCount, $TestParcompOutFileMD5)
-                $FileCount++
-                if ($TestParcompOutFileMD5 -ne $TestSourceFileMD5) {$MD5MatchFlag = $false}
-            }
-            if ($MD5MatchFlag) {
-                Win-DebugTimestamp -output ("Host: The output file of fallback test (compress) and the source file are matched!")
-            } else {
-                Win-DebugTimestamp -output ("Host: The output file of fallback test (compress) and the source file are not matched!")
-
-                $ReturnValue.result = $false
-                $ReturnValue.error = "MD5_no_matched"
+            if ($ReturnValue.result -and !$CheckMD5Result.result) {
+                $ReturnValue.result = $CheckMD5Result.result
+                $ReturnValue.error = $CheckMD5Result.error
             }
         }
 
         if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
             Win-DebugTimestamp -output ("Host: Double check the output file of fallback test (decompress)")
-            $MD5MatchFlag = $true
-            $CheckMD5Result = WinHostCheckMD5 -deCompressFlag $true `
-                                              -CompressProvider $CompressProvider `
-                                              -deCompressProvider $deCompressProvider `
-                                              -QatCompressionType $QatCompressionType `
-                                              -Level $Level `
-                                              -Chunk $Chunk `
-                                              -TestFileType $TestFileType `
-                                              -TestFileSize $TestFileSize `
-                                              -TestPathName $deCompressTestPath
+            $CheckMD5Result = WBase-CheckOutputFile `
+                -Remote $false `
+                -deCompressFlag $true `
+                -CompressProvider $CompressProvider `
+                -deCompressProvider $deCompressProvider `
+                -QatCompressionType $QatCompressionType `
+                -Level $Level `
+                -Chunk $Chunk `
+                -blockSize $blockSize `
+                -TestPath $deCompressTestPath `
+                -TestFileType $TestFileType `
+                -TestFileSize $TestFileSize
 
-            $TestSourceFileMD5 = $CheckMD5Result.SourceFile
-            Win-DebugTimestamp -output ("Host: The MD5 value of source file > {0}" -f $TestSourceFileMD5)
-            $FileCount = 0
-            ForEach ($TestParcompOutFileMD5 in $CheckMD5Result.OutFile) {
-                Win-DebugTimestamp -output ("Host: The MD5 value of fallback test (decompress) output file {0} > {1}" -f $FileCount, $TestParcompOutFileMD5)
-                $FileCount++
-                if ($TestParcompOutFileMD5 -ne $TestSourceFileMD5) {$MD5MatchFlag = $false}
-            }
-            if ($MD5MatchFlag) {
-                Win-DebugTimestamp -output ("Host: The output file of fallback test (decompress) and the source file are matched!")
-            } else {
-                Win-DebugTimestamp -output ("Host: The output file of fallback test (decompress) and the source file are not matched!")
-
-                if ($ReturnValue.result) {$ReturnValue.result = $false}
-                if ($ReturnValue.error -ne "MD5_no_matched") {$ReturnValue.error = "MD5_no_matched"}
+            if ($ReturnValue.result -and !$CheckMD5Result.result) {
+                $ReturnValue.result = $CheckMD5Result.result
+                $ReturnValue.error = $CheckMD5Result.error
             }
         }
     } else {
@@ -1180,7 +969,7 @@ function WinHost-CNGTestBase
 
         [string]$numIter = 10000,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
         [string]$BertaResultPath = "C:\\temp"
     )
@@ -1190,11 +979,10 @@ function WinHost-CNGTestBase
         error = "no_error"
     }
 
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $CNGTestOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
     }
 
-    $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
     $CNGTestOutLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.OutputLog
     $CNGTestErrorLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.ErrorLog
 
@@ -1215,7 +1003,7 @@ function WinHost-CNGTestBase
                                    -padding $padding `
                                    -numThreads $numThreads `
                                    -numIter $numIter `
-                                   -TestPathName $TestPathName
+                                   -TestPath $TestPath
 
     # Check CNGTest test process number
     $CheckProcessNumberFlag = WBase-CheckProcessNumber -ProcessName "cngtest"
@@ -1232,7 +1020,7 @@ function WinHost-CNGTestBase
     }
 
     # Check CNGTest test result
-    $CheckOutput = WBase-CheckOutput `
+    $CheckOutput = WBase-CheckOutputLog `
         -TestOutputLog $CNGTestOutLog `
         -TestErrorLog $CNGTestErrorLog `
         -Remote $false `
@@ -1290,7 +1078,7 @@ function WinHost-CNGTestPerformance
 
         [string]$numIter = 10000,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
         [string]$BertaResultPath = "C:\\temp",
 
@@ -1303,11 +1091,10 @@ function WinHost-CNGTestPerformance
         error = "no_error"
     }
 
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $CNGTestOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
     }
 
-    $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
     $CNGTestOutLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.OutputLog
     $CNGTestErrorLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.ErrorLog
 
@@ -1328,7 +1115,7 @@ function WinHost-CNGTestPerformance
                                    -padding $padding `
                                    -numThreads $numThreads `
                                    -numIter $numIter `
-                                   -TestPathName $TestPathName
+                                   -TestPath $TestPath
 
     # Check CNGTest test process number
     $CheckProcessNumberFlag = WBase-CheckProcessNumber -ProcessName "cngtest"
@@ -1345,7 +1132,7 @@ function WinHost-CNGTestPerformance
     }
 
     # Check CNGTest test result
-    $CheckOutput = WBase-CheckOutput `
+    $CheckOutput = WBase-CheckOutputLog `
         -TestOutputLog $CNGTestOutLog `
         -TestErrorLog $CNGTestErrorLog `
         -Remote $false `
@@ -1402,7 +1189,7 @@ function WinHost-CNGTestSWfallback
 
         [string]$numIter = 10000,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
         [string]$BertaResultPath = "C:\\temp",
 
@@ -1414,11 +1201,10 @@ function WinHost-CNGTestSWfallback
         error = "no_error"
     }
 
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $CNGTestOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
     }
 
-    $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
     $CNGTestOutLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.OutputLog
     $CNGTestErrorLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.ErrorLog
 
@@ -1439,7 +1225,7 @@ function WinHost-CNGTestSWfallback
                                    -padding $padding `
                                    -numThreads $numThreads `
                                    -numIter $numIter `
-                                   -TestPathName $TestPathName
+                                   -TestPath $TestPath
 
     Start-Sleep -Seconds 10
 
@@ -1496,7 +1282,7 @@ function WinHost-CNGTestSWfallback
     }
 
     # Check CNGTest test result
-    $CheckOutput = WBase-CheckOutput `
+    $CheckOutput = WBase-CheckOutputLog `
         -TestOutputLog $CNGTestOutLog `
         -TestErrorLog $CNGTestErrorLog `
         -Remote $false `
@@ -1568,9 +1354,9 @@ function WinHost-Stress
     $ParcompType = "Performance"
     $runParcompType = "Process"
     $CompressType = "All"
-    $CompressTestPath = $ParcompOpts.CompressPathName
-    $deCompressTestPath = $ParcompOpts.deCompressPathName
-    $CNGTestPath = $CNGTestOpts.PathName
+    $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
+    $deCompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
+    $CNGTestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
 
     # Run test
     if ($RunParcomp) {
@@ -1579,7 +1365,7 @@ function WinHost-Stress
                                             -deCompressFlag $false `
                                             -ParcompType $ParcompType `
                                             -runParcompType $runParcompType `
-                                            -TestPathName $CompressTestPath
+                                            -TestPath $CompressTestPath
 
         Start-Sleep -Seconds 5
 
@@ -1588,7 +1374,7 @@ function WinHost-Stress
                                               -deCompressFlag $true `
                                               -ParcompType $ParcompType `
                                               -runParcompType $runParcompType `
-                                              -TestPathName $deCompressTestPath
+                                              -TestPath $deCompressTestPath
 
         Start-Sleep -Seconds 5
     }
@@ -1606,12 +1392,12 @@ function WinHost-Stress
             $ReturnValue.error = $WaitProcessFlag.error
         }
 
-        $CompressTestOutLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $CompressTestPath, $ParcompOpts.OutputLog
-        $CompressTestErrorLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $CompressTestPath, $ParcompOpts.ErrorLog
-        $deCompressTestOutLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $deCompressTestPath, $ParcompOpts.OutputLog
-        $deCompressTestErrorLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $deCompressTestPath, $ParcompOpts.ErrorLog
+        $CompressTestOutLogPath = "{0}\\{1}" -f $CompressTestPath, $ParcompOpts.OutputLog
+        $CompressTestErrorLogPath = "{0}\\{1}" -f $CompressTestPath, $ParcompOpts.ErrorLog
+        $deCompressTestOutLogPath = "{0}\\{1}" -f $deCompressTestPath, $ParcompOpts.OutputLog
+        $deCompressTestErrorLogPath = "{0}\\{1}" -f $deCompressTestPath, $ParcompOpts.ErrorLog
 
-        $CheckOutput = WBase-CheckOutput `
+        $CheckOutput = WBase-CheckOutputLog `
             -TestOutputLog $CompressTestOutLogPath `
             -TestErrorLog $CompressTestErrorLogPath `
             -Remote $false `
@@ -1622,7 +1408,7 @@ function WinHost-Stress
             $ReturnValue.error = $CheckOutput.error
         }
 
-        $CheckOutput = WBase-CheckOutput `
+        $CheckOutput = WBase-CheckOutputLog `
             -TestOutputLog $deCompressTestOutLogPath `
             -TestErrorLog $deCompressTestErrorLogPath `
             -Remote $false `
@@ -1645,10 +1431,10 @@ function WinHost-Stress
             $ReturnValue.error = $WaitProcessFlag.error
         }
 
-        $CNGTestOutLog = "{0}\\{1}\\{2}" -f $STVWinPath, $CNGTestPath, $CNGTestOpts.OutputLog
-        $CNGTestErrorLog = "{0}\\{1}\\{2}" -f $STVWinPath, $CNGTestPath, $CNGTestOpts.ErrorLog
+        $CNGTestOutLog = "{0}\\{1}" -f $CNGTestPath, $CNGTestOpts.OutputLog
+        $CNGTestErrorLog = "{0}\\{1}" -f $CNGTestPath, $CNGTestOpts.ErrorLog
 
-        $CheckOutput = WBase-CheckOutput `
+        $CheckOutput = WBase-CheckOutputLog `
             -TestOutputLog $CNGTestOutLog `
             -TestErrorLog $CNGTestErrorLog `
             -Remote $false `

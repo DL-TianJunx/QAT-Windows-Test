@@ -465,6 +465,17 @@ function WBase-STVWinPathInit
             -ErrorAction Stop | out-null
     }
 
+    # Init test path for process
+    if (Test-Path -Path $LocalProcessPath) {
+        Remove-Item `
+            -Path $LocalProcessPath `
+            -Recurse `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+    New-Item -Path $LocalProcessPath -ItemType Directory | out-null
+
     # Make the automation directories if they do not exist
     if (-not (Test-Path -Path $VHDAndTestFiles.ParentsVMPath)) {
         Win-DebugTimestamp -output (
@@ -1641,6 +1652,104 @@ function WBase-DoubleCheckDriver
 }
 
 # About test process
+function WBase-GenerateProcessKey
+{
+    if (Test-Path -Path $LocalProcessKeyFilePath) {
+        Remove-Item `
+            -Path $LocalProcessKeyFilePath `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+    $LocationInfo | ConvertTo-Json -Depth 5 | Out-File $LocalProcessKeyFilePath -Append -Encoding ascii
+}
+
+function WBase-GetProcessKey
+{
+    $ProcessKey = Get-Content -Path $LocalProcessKeyFilePath -Raw
+    $global:LocationInfo = ConvertFrom-Json -InputObject $ProcessKey -AsHashtable
+}
+
+function WBase-StartProcess
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$ProcessFilePath,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ProcessArgs,
+
+        [Parameter(Mandatory=$True)]
+        [string]$keyWords
+    )
+
+    $ReturnValue = [hashtable] @{
+        ID = $null
+        Output = $null
+        Error = $null
+        Result = $null
+    }
+
+    if ($ProcessFilePath -eq "pwsh") {
+        $ProcessCommandFilePath = "C:\Program Files\PowerShell\7\pwsh.exe"
+        if (-not [System.IO.File]::Exists($ProcessCommandFilePath)) {
+            $ProcessCommandFilePath = "powershell"
+        }
+
+        $ProcessCommandArgs = "-Command {0}" -f $ProcessArgs
+    } else {
+        $ProcessCommandFilePath = $ProcessFilePath
+        $ProcessCommandArgs = $ProcessArgs
+    }
+
+    $ProcessOutputLogPath = "{0}\\ProcessOutputLog_{1}.txt" -f $LocalProcessPath, $keyWords
+    $ReturnValue.Output = $ProcessOutputLogPath
+    if (Test-Path -Path $ProcessOutputLogPath) {
+        Remove-Item `
+            -Path $ProcessOutputLogPath `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+
+    $ProcessErrorLogPath = "{0}\\ProcessErrorLog_{1}.txt" -f $LocalProcessPath, $keyWords
+    $ReturnValue.Error = $ProcessErrorLogPath
+    if (Test-Path -Path $ProcessErrorLogPath) {
+        Remove-Item `
+            -Path $ProcessErrorLogPath `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+
+    $ProcessResultName = "ProcessResult_{0}.txt" -f $keyWords
+    $ProcessResultPath = "{0}\\{1}" -f $LocalProcessPath, $ProcessResultName
+    $ReturnValue.Result = $ProcessResultPath
+    if (Test-Path -Path $ProcessResultPath) {
+        Remove-Item `
+            -Path $ProcessResultPath `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+    New-Item -Path $LocalProcessPath -Name $ProcessResultName -ItemType "file" | out-null
+
+    $ProcessInfo = Start-Process -FilePath $ProcessCommandFilePath `
+        -ArgumentList $ProcessCommandArgs `
+        -RedirectStandardOutput $ProcessOutputLogPath `
+        -RedirectStandardError $ProcessErrorLogPath `
+        -NoNewWindow `
+        -PassThru
+
+    Win-DebugTimestamp -output ("{0}: Start process that id is {1}" -f $keyWords, $ProcessInfo.ID)
+    Win-DebugTimestamp -output ("{0}: Process output file is {1}" -f $keyWords, $ProcessOutputLogPath)
+    Win-DebugTimestamp -output ("{0}: Process error file is {1}" -f $keyWords, $ProcessErrorLogPath)
+    Win-DebugTimestamp -output ("{0}: Process result file is {1}" -f $keyWords, $ProcessResultPath)
+    $ReturnValue.ID = $ProcessInfo.ID
+
+    return $ReturnValue
+}
+
 function WBase-CheckProcessNumber
 {
     Param(
@@ -1813,47 +1922,60 @@ function WBase-WaitProcessToCompletedByID
 
     if ($Remote) {
         $LogKeyWord = $Session.Name
-        $ProcessError = $null
-        $ProcessStatus = Invoke-Command -Session $Session -ScriptBlock {
-            Param($ProcessID)
-            Get-Process -ID $ProcessID 2>&1
-        } -ArgumentList $ProcessID
     } else {
         $LogKeyWord = "Host"
-        $ProcessError = $null
-        $ProcessStatus = Get-Process -ID $ProcessID `
-                                     -ErrorAction SilentlyContinue `
-                                     -ErrorVariable ProcessError
     }
 
-    if ([String]::IsNullOrEmpty($ProcessError)) {
-        Win-DebugTimestamp -output (
-            "{0}: The process is not completed and wait" -f $LogKeyWord
-        )
-
+    $ProcessID | ForEach-Object {
         if ($Remote) {
-            $waitProcessStop = Invoke-Command -Session $Session -ScriptBlock {
+            $ProcessError = $null
+            $ProcessStatus = Invoke-Command -Session $Session -ScriptBlock {
                 Param($ProcessID)
-                wait-process -ID $ProcessID -Timeout 20000 2>&1
-                Start-Sleep -Seconds 5
-            } -ArgumentList $ProcessID
+                Get-Process -ID $ProcessID 2>&1
+            } -ArgumentList $_
         } else {
-            $waitProcessStop = wait-process -ID $ProcessID -Timeout 20000 2>&1
-            Start-Sleep -Seconds 5
+            $ProcessError = $null
+            $ProcessStatus = Get-Process -ID $_ `
+                                         -ErrorAction SilentlyContinue `
+                                         -ErrorVariable ProcessError
         }
 
-        if ($waitParcompStop -match "is not stopped in the specified time-out") {
+        if ([String]::IsNullOrEmpty($ProcessError)) {
             Win-DebugTimestamp -output (
-                "{0}: The process is timeout" -f $LogKeyWord
+                "{0}: The process({1}) is not completed and wait" -f $LogKeyWord, $_
             )
-            $ReturnValue.result = $false
-            $ReturnValue.error = "process_timeout"
+
+            if ($Remote) {
+                $waitProcessStop = Invoke-Command -Session $Session -ScriptBlock {
+                    Param($ProcessID)
+                    wait-process -ID $ProcessID -Timeout 20000 2>&1
+                    Start-Sleep -Seconds 5
+                } -ArgumentList $_
+            } else {
+                $waitProcessStop = wait-process -ID $_ -Timeout 20000 2>&1
+                Start-Sleep -Seconds 5
+            }
+
+            if ($waitParcompStop -match "is not stopped in the specified time-out") {
+                Win-DebugTimestamp -output (
+                    "{0}: The process({1}) is timeout" -f $LogKeyWord, $_
+                )
+
+                if ($ReturnValue.result) {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "process_timeout"
+                }
+            }
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: The process({1}) is completed" -f $LogKeyWord, $_
+            )
         }
     }
 
     if ($ReturnValue.result) {
         Win-DebugTimestamp -output (
-            "{0}: The process is completed" -f $LogKeyWord
+            "{0}: The all process is completed" -f $LogKeyWord
         )
     }
 
@@ -1872,10 +1994,18 @@ function WBase-CheckProcessOutput
         [Parameter(Mandatory=$True)]
         [bool]$Remote,
 
-        [object]$Session = $null
+        [object]$Session = $null,
+
+        [bool]$CheckResultFlag = $true,
+
+        [string]$ProcessResult
     )
 
-    $ReturnValue = $false
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+        testResult = $null
+    }
 
     if ($Remote) {
         $LogKeyWord = $Session.Name
@@ -1917,26 +2047,55 @@ function WBase-CheckProcessOutput
         }
     }
 
+    if ($CheckResultFlag) {
+        if ([System.IO.File]::Exists($ProcessResult)) {
+            $ProcessResultTxt = Get-Content -Path $ProcessResult -Raw
+            if ([String]::IsNullOrEmpty($ProcessResultTxt)) {
+                $ReturnValue.result = $false
+                $ReturnValue.error = "no_test_result"
+            } else {
+                $ProcessResultHashtable = ConvertFrom-Json -InputObject $ProcessResultTxt -AsHashtable
+                $ReturnValue.result = $ProcessResultHashtable.result
+                $ReturnValue.error = $ProcessResultHashtable.error
+                $ReturnValue.testResult = $ProcessResultHashtable
+            }
+        } else {
+            $ReturnValue.result = $false
+            $ReturnValue.error = "no_result_file"
+        }
+    }
+
     if ([String]::IsNullOrEmpty($ProcessOutputLog)) {
         if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
-            $ReturnValue = $false
+            if ($ReturnValue.result) {
+                $ReturnValue.result = $false
+                $ReturnValue.error = "no_output"
+            }
+
             Win-DebugTimestamp -output (
                 "{0}: Can not get output and error log of the process" -f $LogKeyWord
             )
         } else {
-            $ReturnValue = $false
+            if ($ReturnValue.result) {
+                $ReturnValue.result = $false
+                $ReturnValue.error = "process_error"
+            }
+
             Win-DebugTimestamp -output (
                 "{0}: Get error log of the process > {1}" -f $LogKeyWord, $ProcessErrorLog
             )
         }
     } else {
         if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
-            $ReturnValue = $true
             Win-DebugTimestamp -output (
                 "{0}: Get output log of the process > {1}" -f $LogKeyWord, $ProcessOutputLog
             )
         } else {
-            $ReturnValue = $false
+            if ($ReturnValue.result) {
+                $ReturnValue.result = $false
+                $ReturnValue.error = "process_error"
+            }
+
             Win-DebugTimestamp -output (
                 "{0}: Get error log of the process > {1}" -f $LogKeyWord, $ProcessErrorLog
             )
@@ -2033,7 +2192,7 @@ function WBase-WaitJobToCompleted
 }
 
 # About test output
-function WBase-CheckOutput
+function WBase-CheckOutputLog
 {
     Param(
         [Parameter(Mandatory=$True)]
@@ -2135,7 +2294,7 @@ function WBase-CheckOutput
     } else {
         Win-DebugTimestamp -output ("{0}: Output log > {1}" -f $LogKeyWord, $TestOutputLog)
 
-        $CheckOutputFlag = WBase-CheckOutputLog -OutputLog $TestOutputLog
+        $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $TestOutputLog
         if ($CheckOutputFlag) {
             if ([String]::IsNullOrEmpty($keyWords)) {
                 Win-DebugTimestamp -output ("{0}: The test is passed" -f $LogKeyWord)
@@ -2166,7 +2325,7 @@ function WBase-CheckOutput
     return $ReturnValue
 }
 
-function WBase-CheckOutputLog
+function WBase-CheckOutputLogError
 {
     Param(
         [Parameter(Mandatory=$True)]
@@ -2222,6 +2381,372 @@ function WBase-GetTestOps
     }
 
     return [int]$Ops
+}
+
+function WBase-GetOutputFile
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$TestPath,
+
+        [Parameter(Mandatory=$True)]
+        [string]$FileName,
+
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [object]$Session = $null
+    )
+
+    # Need check type because:
+    #    one return file will reset to hashtable
+    #    more return files will return array
+    $ReturnValue = @()
+
+    $ScriptBlock = {
+        Param($TestPath, $ParcompOpts)
+        $ReturnValue = @()
+
+        $TestParcompOutFileArray = Get-ChildItem -Path $TestPath
+        $TestParcompOutFileArray | ForEach-Object {
+            if (($_.Name -ne $ParcompOpts.OutputLog) -and
+                ($_.Name -ne $ParcompOpts.ErrorLog) -and
+                ($_.Name -ne $ParcompOpts.InputFileName)) {
+                $ReturnValue += [hashtable] @{
+                    name = $_.Name
+                    path = $TestPath
+                }
+            }
+        }
+
+        return $ReturnValue
+    }
+
+    if ($Remote) {
+        $OutputFileArray = Invoke-Command `
+            -Session $Session `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $TestPath, $ParcompOpts
+    } else {
+        $OutputFileArray = Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $TestPath, $ParcompOpts
+    }
+
+    $OutputFileArray | ForEach-Object {
+        if (-not [String]::IsNullOrEmpty($_.name)) {
+            if ($_.name -match $FileName) {
+                $ReturnValue += [hashtable] @{
+                    name = $_.name
+                    path = $_.path
+                }
+            }
+        }
+    }
+
+    return $ReturnValue
+}
+
+function WBase-CheckOutputFile
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [object]$Session = $null,
+
+        [bool]$deCompressFlag = $false,
+
+        [string]$CompressProvider = "qat",
+
+        [string]$deCompressProvider = "qat",
+
+        [string]$QatCompressionType = "dynamic",
+
+        [int]$Level = 1,
+
+        [int]$Chunk = 64,
+
+        [int]$blockSize = 4096,
+
+        [string]$TestPath = $null,
+
+        [string]$TestFileType = "high",
+
+        [int]$TestFileSize = 200
+    )
+
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+    }
+
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
+    }
+
+    $TestSourceFile = "{0}\\{1}{2}.txt" -f $STVWinPath, $TestFileType, $TestFileSize
+    $deCompressPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.MD5PathName
+    $TestParcompOutFileList = @()
+    $TestParcompOutFileMD5List = @()
+
+    if ($Remote) {
+        $VMNameSuffix = ($Session.Name).split("_")[1]
+        $TestParcompOutFileArray = WBase-GetOutputFile `
+            -TestPath $TestPath `
+            -FileName $ParcompOpts.OutputFileName `
+            -Remote $true `
+            -Session $Session
+    } else {
+        $TestParcompOutFileArray = WBase-GetOutputFile `
+            -TestPath $TestPath `
+            -FileName $ParcompOpts.OutputFileName `
+            -Remote $false
+    }
+
+    if ([String]::IsNullOrEmpty($TestParcompOutFileArray)) {
+        $ReturnValue.result = $false
+        $ReturnValue.error = "no_output_file"
+        return $ReturnValue
+    }
+
+    # Init test files
+    $ScriptBlock = {
+        Param($TestParcompOutFileArray, $deCompressPath)
+        $ReturnValue = [System.Array] @()
+
+        if (Test-Path -Path $deCompressPath) {
+            Get-Item -Path $deCompressPath | Remove-Item -Recurse -Force | out-null
+        }
+        New-Item -Path $deCompressPath -ItemType Directory | out-null
+
+        $count = 0
+        $TestParcompOutFileArray | ForEach-Object {
+            $RundeCompressPath = "{0}\\deCompress_{1}" -f $deCompressPath, $count
+            $count = $count + 1
+            if (Test-Path -Path $RundeCompressPath) {
+                Get-Item -Path $RundeCompressPath | Remove-Item -Recurse -Force | out-null
+            }
+            New-Item -Path $RundeCompressPath -ItemType Directory | out-null
+
+            $ReturnValue += [hashtable] @{
+                file = "{0}\\{1}" -f $_.path, $_.name
+                path = $RundeCompressPath
+            }
+        }
+
+        return $ReturnValue
+    }
+
+    if ($Remote) {
+        $LogKeyWord = $Session.Name
+        $TestParcompOutFileList = Invoke-Command `
+            -Session $Session `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $TestParcompOutFileArray, $deCompressPath
+
+        $TestSourceFileMD5 = Invoke-Command -Session $Session -ScriptBlock {
+            Param($TestSourceFile)
+            certutil -hashfile $TestSourceFile MD5
+        } -ArgumentList $TestSourceFile
+        $TestSourceFileMD5 = $TestSourceFileMD5[1]
+
+        if ($deCompressFlag) {
+            ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
+                $TestParcompOutFileMD5 = Invoke-Command -Session $Session -ScriptBlock {
+                    Param($TestParcompOutFile)
+                    certutil -hashfile $TestParcompOutFile.file MD5
+                } -ArgumentList $TestParcompOutFile
+                $TestParcompOutFileMD5 = $TestParcompOutFileMD5[1]
+                $TestParcompOutFileMD5List += $TestParcompOutFileMD5
+            }
+        }
+    } else {
+        $LogKeyWord = "Host"
+        $TestParcompOutFileList = Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $TestParcompOutFileArray, $deCompressPath
+
+        $TestSourceFileMD5 = Invoke-Command -ScriptBlock {
+            Param($TestSourceFile)
+            certutil -hashfile $TestSourceFile MD5
+        } -ArgumentList $TestSourceFile
+        $TestSourceFileMD5 = $TestSourceFileMD5[1]
+
+        if ($deCompressFlag) {
+            ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
+                $TestParcompOutFileMD5 = Invoke-Command -ScriptBlock {
+                    Param($TestParcompOutFile)
+                    certutil -hashfile $TestParcompOutFile.file MD5
+                } -ArgumentList $TestParcompOutFile
+                $TestParcompOutFileMD5 = $TestParcompOutFileMD5[1]
+                $TestParcompOutFileMD5List += $TestParcompOutFileMD5
+            }
+        }
+    }
+
+    if (-not $deCompressFlag) {
+        if ($deCompressProvider -eq "7zip") {
+            $TestParcompOutFileList = @()
+
+            if (-not (Test-Path -Path $deCompressPath)) {
+                New-Item -Path $deCompressPath -ItemType Directory | out-null
+            }
+
+            $count = 0
+            $TestParcompOutFileArray | ForEach-Object {
+                if ($Remote) {
+                    $RundeCompressPath = "{0}\\{1}" -f $deCompressPath, $VMNameSuffix
+                    if (-not (Test-Path -Path $deCompressPath)) {
+                        New-Item -Path $deCompressPath -ItemType Directory | out-null
+                    }
+
+                    $RundeCompressPath = "{0}\\deCompress_{1}" -f $RundeCompressPath, $count
+                } else {
+                    $RundeCompressPath = "{0}\\deCompress_{1}" -f $deCompressPath, $count
+                }
+
+                if (-not (Test-Path -Path $RundeCompressPath)) {
+                    New-Item -Path $RundeCompressPath -ItemType Directory | out-null
+                }
+
+                $count = $count + 1
+                $TestParcompOutFile = "{0}\\{1}" -f $_.path, $_.name
+                $deCompressInFile = "{0}\\{1}" -f $RundeCompressPath, $_.name
+                if (Test-Path -Path $deCompressInFile) {
+                    Remove-Item -Path $deCompressInFile -Force | out-null
+                }
+
+                if ($Remote) {
+                    Copy-Item -FromSession $Session -Path $TestParcompOutFile -Destination $RundeCompressPath
+                } else {
+                    Copy-Item -Path $TestParcompOutFile -Destination $RundeCompressPath
+                }
+
+                $TestParcompOutFileList += [hashtable] @{
+                    file = $deCompressInFile
+                    path = $RundeCompressPath
+                }
+            }
+
+            $count = 0
+            ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
+                $TestdeCompressInFile = "{0}\\{1}" -f
+                    $TestParcompOutFile.path,
+                    $TestParcompOutFile.name
+                $TestdeCompressOutFile = "{0}\\{1}" -f
+                    $TestParcompOutFile.path,
+                    ($ParcompOpts.OutputFileName).split(".")[0]
+                if (Test-Path -Path $TestdeCompressOutFile) {
+                    Get-Item -Path $TestdeCompressOutFile | Remove-Item -Recurse | out-null
+                }
+
+                $Use7zflag = UT-Use7z -InFile $TestdeCompressInFile -OutFile $TestParcompOutFile.path
+                if ($Use7zflag) {
+                    $TestdeCompressOutFileMD5 = certutil -hashfile $TestdeCompressOutFile MD5
+                    $TestdeCompressOutFileMD5 = $TestdeCompressOutFileMD5[1]
+                    $TestParcompOutFileMD5List += $TestdeCompressOutFileMD5
+                } else {
+                    if ($ReturnValue.result) {
+                        $ReturnValue.result = $Use7zflag
+                        $ReturnValue.error = "decompress_7zip_failed"
+                    }
+                }
+            }
+        } else {
+            ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
+                if ($Remote) {
+                    $Side = "remote"
+                    $TestFilelocation = "VM"
+                } else {
+                    $Side = "host"
+                    $TestFilelocation = "host"
+                }
+
+                $deCompressProcess = WBase-Parcomp `
+                    -Side $Side `
+                    -VMNameSuffix $VMNameSuffix `
+                    -deCompressFlag $true `
+                    -CompressProvider $CompressProvider `
+                    -deCompressProvider $deCompressProvider `
+                    -QatCompressionType $QatCompressionType `
+                    -Level $Level `
+                    -Chunk $Chunk `
+                    -blockSize $blockSize `
+                    -TestPath $TestParcompOutFile.path `
+                    -runParcompType "Process" `
+                    -TestFilelocation $TestFilelocation `
+                    -TestFilefullPath $TestParcompOutFile.file
+            }
+
+            WBase-WaitProcessToCompletedByName `
+                -ProcessName "parcomp" `
+                -Remote $Remote `
+                -Session $Session | out-null
+
+            ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
+                if ($Remote) {
+                    $TestParcompOutFileArray = WBase-GetOutputFile `
+                        -TestPath $TestParcompOutFile.path `
+                        -FileName $ParcompOpts.OutputFileName `
+                        -Remote $true `
+                        -Session $Session
+                    $TestdeCompressOutFile = "{0}\\{1}" -f
+                        $TestParcompOutFileArray.path,
+                        $TestParcompOutFileArray.name
+
+                    $TestdeCompressOutFileMD5 = Invoke-Command -Session $Session -ScriptBlock {
+                        Param($TestdeCompressOutFile)
+                        certutil -hashfile $TestdeCompressOutFile MD5
+                    } -ArgumentList $TestdeCompressOutFile
+                } else {
+                    $TestParcompOutFileArray = WBase-GetOutputFile `
+                        -TestPath $TestParcompOutFile.path `
+                        -FileName $ParcompOpts.OutputFileName `
+                        -Remote $false
+                    $TestdeCompressOutFile = "{0}\\{1}" -f
+                        $TestParcompOutFileArray.path,
+                        $TestParcompOutFileArray.name
+
+                    $TestdeCompressOutFileMD5 = Invoke-Command -ScriptBlock {
+                        Param($TestdeCompressOutFile)
+                        certutil -hashfile $TestdeCompressOutFile MD5
+                    } -ArgumentList $TestdeCompressOutFile
+                }
+
+                $TestdeCompressOutFileMD5 = $TestdeCompressOutFileMD5[1]
+                #Win-DebugTimestamp -output ("{0}: {1} > {2}" -f $Session.Name, $TestParcompOutFile, $TestParcompOutFileMD5)
+                $TestParcompOutFileMD5List += $TestdeCompressOutFileMD5
+            }
+        }
+    }
+
+    $MD5MatchFlag = $true
+    Win-DebugTimestamp -output (
+        "{0}: The MD5 value of source file > {1}" -f
+            $LogKeyWord,
+            $TestSourceFileMD5
+    )
+    $FileCount = 0
+    ForEach ($TestParcompOutFileMD5 in $TestParcompOutFileMD5List) {
+        Win-DebugTimestamp -output (
+            "{0}: The MD5 value of test output file {1} > {2}" -f
+                $LogKeyWord,
+                $FileCount,
+                $TestParcompOutFileMD5
+        )
+        $FileCount++
+        if ($TestParcompOutFileMD5 -ne $TestSourceFileMD5) {$MD5MatchFlag = $false}
+    }
+    if ($MD5MatchFlag) {
+        Win-DebugTimestamp -output ("{0}: Those files are matched!" -f $LogKeyWord)
+    } else {
+        Win-DebugTimestamp -output ("{0}: Those files are not matched!" -f $LogKeyWord)
+        $ReturnValue.result = $false
+        $ReturnValue.error = "MD5_no_matched"
+    }
+
+    return $ReturnValue
 }
 
 # About Installer
@@ -2673,7 +3198,7 @@ function WBase-EnableAndDisableQatDevice
             }
 
             if ($Wait) {
-                Start-Sleep -Seconds 30
+                Start-Sleep -Seconds 5
             }
         } else {
             Win-DebugTimestamp -output (
@@ -2765,7 +3290,7 @@ function WBase-EnableAndDisableQatDevice
             }
 
             if ($Wait) {
-                Start-Sleep -Seconds 90
+                Start-Sleep -Seconds 30
             }
         } else {
             Win-DebugTimestamp -output (
@@ -2825,7 +3350,7 @@ function WBase-HeartbeatQatDevice
                 Start-Sleep -Seconds 30
             }
 
-            Start-Sleep -Seconds 90
+            Start-Sleep -Seconds 60
         }
 
         if ($ReturnValue) {
@@ -3001,7 +3526,7 @@ function WBase-GenerateParcompTestCase
     #     Block = 4096
     #     CompressType = "All"
     #     CompressionLevel = 1
-    #     CompressionType = "static"
+    #     CompressionType = "dynamic"
     #     Iteration = 200
     #     Thread = 8
     #     TestFileType = "calgary"
@@ -3041,7 +3566,7 @@ function WBase-GenerateParcompTestCase
                                                     Block = $Block
                                                     CompressType = $CompressType
                                                     CompressionLevel = $CompressionLevel
-                                                    CompressionType = "static"
+                                                    CompressionType = "dynamic"
                                                     Iteration = $Iteration
                                                     Thread = $Thread
                                                     TestFileType = $TestFileType
@@ -3072,7 +3597,7 @@ function WBase-GenerateParcompTestCase
                                                 Block = $Block
                                                 CompressType = $CompressType
                                                 CompressionLevel = 1
-                                                CompressionType = "static"
+                                                CompressionType = "dynamic"
                                                 Iteration = $Iteration
                                                 Thread = $Thread
                                                 TestFileType = $TestFileType
@@ -3126,7 +3651,7 @@ function WBase-Parcomp
 
         [string]$TestFilefullPath = $null,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
         [string]$TestFileType = "high",
 
@@ -3137,15 +3662,16 @@ function WBase-Parcomp
     $ReturnValue = [hashtable] @{
         result = $true
         error = "no_error"
-        ParcompJob = $null
+        testOps = $null
+        job = $null
+        process = $null
     }
 
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $ParcompOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
 
     if ($Side -eq "host") {
-        $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
         $TestSourceFile = "{0}\\{1}{2}.txt" -f
             $STVWinPath,
             $TestFileType,
@@ -3159,10 +3685,8 @@ function WBase-Parcomp
     } elseif ($Side -eq "remote") {
         $PSSessionName = ("Session_{0}" -f $VMNameSuffix)
         $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
-
         $Session = Get-PSSession -name $PSSessionName
 
-        $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
         $TestSourceFile = "{0}\\{1}{2}.txt" -f
             $STVWinPath,
             $TestFileType,
@@ -3243,21 +3767,52 @@ function WBase-Parcomp
             $TestParcompInFile
     )
     if (($deCompressFlag) -and (!$TestFilefullPath)) {
-        $ParcompArges = "-i {0} -o {1} -p {2} -c {3}" -f
+        $ParcompArges = "-i {0} -o {1} -p {2} -c {3} -k {4}" -f
             $TestSourceFile,
             $TestParcompInFile,
             $deCompressProvider,
-            $Chunk
+            $Chunk,
+            $blockSize
         if ($Side -eq "host") {
             Invoke-Command -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
             } -ArgumentList $ParcompExe, $ParcompArges | out-null
+
+            $CompressOutFileArray = WBase-GetOutputFile `
+                -TestPath $TestPath `
+                -FileName $ParcompOpts.InputFileName `
+                -Remote $false
+
+            Invoke-Command -ScriptBlock {
+                Param($CompressOutFile, $TestParcompInFile)
+                if ($CompressOutFile.name -ne $TestParcompInFile) {
+                    $FullPath = "{0}\\{1}" -f $CompressOutFile.path, $CompressOutFile.name
+                    Rename-Item `
+                        -Path $FullPath `
+                        -NewName $TestParcompInFile | out-null
+                }
+            } -ArgumentList $CompressOutFileArray, $ParcompOpts.InputFileName | out-null
         } elseif ($Side -eq "remote") {
             Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
             } -ArgumentList $ParcompExe, $ParcompArges | out-null
+
+            $CompressOutFileArray = WBase-GetOutputFile `
+                -TestPath $TestPath `
+                -FileName $ParcompOpts.InputFileName `
+                -Remote $true `
+                -Session $Session
+            Invoke-Command -Session $Session -ScriptBlock {
+                Param($CompressOutFile, $TestParcompInFile)
+                if ($CompressOutFile.name -ne $TestParcompInFile) {
+                    $FullPath = "{0}\\{1}" -f $CompressOutFile.path, $CompressOutFile.name
+                    Rename-Item `
+                        -Path $FullPath `
+                        -NewName $TestParcompInFile | out-null
+                }
+            } -ArgumentList $CompressOutFileArray, $ParcompOpts.InputFileName | out-null
         }
     } else {
         if ($Side -eq "host") {
@@ -3270,10 +3825,11 @@ function WBase-Parcomp
         }
     }
 
-    $ParcompArges = "-i {0} -o {1} -c {2}" -f
+    $ParcompArges = "-i {0} -o {1} -c {2} -k {3}" -f
         $TestParcompInFile,
         $TestParcompOutFile,
-        $Chunk
+        $Chunk,
+        $blockSize
     if ($deCompressFlag) {
         $ParcompArges += " -d"
         $ParcompProvider = $deCompressProvider
@@ -3311,10 +3867,9 @@ function WBase-Parcomp
 
     # Fallback test base on performance test
     if (($ParcompType -eq "Performance") -or ($ParcompType -eq "Fallback")) {
-        $ParcompArges += " -Q -t {0} -n {1} -k {2}" -f
+        $ParcompArges += " -Q -t {0} -n {1}" -f
             $numThreads,
-            $numIterations,
-            $blockSize
+            $numIterations
     }
 
     if ($ParcompType -eq "Fallback") {
@@ -3355,7 +3910,7 @@ function WBase-Parcomp
             $ReturnValue.result = $false
             $ReturnValue.error = "parcomp_failed"
         } else {
-            $CheckOutputFlag = WBase-CheckOutputLog -OutputLog $ParcompPSOut
+            $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $ParcompPSOut
             if ($CheckOutputFlag) {
                 $TestOps = WBase-GetTestOps -TestOut $ParcompPSOut -keyWords "Mbps"
                 if ([String]::IsNullOrEmpty($TestOps) -or ($TestOps -eq "inf")) {
@@ -3374,6 +3929,7 @@ function WBase-Parcomp
                     )
                     $ReturnValue.result = $true
                     $ReturnValue.error = "no_error"
+                    $ReturnValue.testOps = $TestOps
                 }
             } else {
                 Win-DebugTimestamp -output (
@@ -3402,7 +3958,7 @@ function WBase-Parcomp
             } -ArgumentList $ParcompExe, $ParcompArges -AsJob
         }
 
-        $ReturnValue.ParcompJob = $ParcompJob
+        $ReturnValue.job = $ParcompJob
     } elseif ($runParcompType -eq "Process") {
         # After running this parcomp type, must be check:
         # -parcomp output file
@@ -3410,24 +3966,30 @@ function WBase-Parcomp
         # -process error log
         # -process output log
         if ($Side -eq "host") {
-            $ParcompPSOut = Invoke-Command -ScriptBlock {
+            $ParcompProcess = Invoke-Command -ScriptBlock {
                 Param($ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog)
-                Start-Process -FilePath $ParcompExe `
+                $ParcompProcess = Start-Process -FilePath $ParcompExe `
                               -ArgumentList $ParcompArges `
                               -RedirectStandardOutput $TestParcompOutLog `
                               -RedirectStandardError $TestParcompErrorLog `
-                              -NoNewWindow
+                              -NoNewWindow `
+                              -PassThru
+                return $ParcompProcess
             } -ArgumentList $ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog
         } elseif ($Side -eq "remote") {
-            $ParcompPSOut = Invoke-Command -Session $Session -ScriptBlock {
+            $ParcompProcess = Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog)
-                Start-Process -FilePath $ParcompExe `
+                $ParcompProcess = Start-Process -FilePath $ParcompExe `
                               -ArgumentList $ParcompArges `
                               -RedirectStandardOutput $TestParcompOutLog `
                               -RedirectStandardError $TestParcompErrorLog `
-                              -NoNewWindow
+                              -NoNewWindow `
+                              -PassThru
+                return $ParcompProcess
             } -ArgumentList $ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog
         }
+
+        $ReturnValue.process = $ParcompProcess
     }
 
     return $ReturnValue
@@ -3613,22 +4175,22 @@ function WBase-CNGTest
 
         [string]$numIter = 100000,
 
-        [string]$TestPathName = $null,
+        [string]$TestPath = $null,
 
-        [string]$VMNameSuffix
+        [string]$VMNameSuffix = $null
     )
 
     $ReturnValue = [hashtable] @{
         result = $true
         error = "no_error"
+        process = $null
     }
 
-    if ([String]::IsNullOrEmpty($TestPathName)) {
-        $TestPathName = $CNGTestOpts.PathName
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
     }
 
     if ($Side -eq "host") {
-        $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
         if (Test-Path -Path $TestPath) {
             Get-Item -Path $TestPath | Remove-Item -Recurse
         }
@@ -3639,7 +4201,6 @@ function WBase-CNGTest
 
         $Session = Get-PSSession -name $PSSessionName
 
-        $TestPath = "{0}\\{1}" -f $STVWinPath, $TestPathName
         Invoke-Command -Session $Session -ScriptBlock {
             Param($TestPath)
             if (Test-Path -Path $TestPath) {
@@ -3709,22 +4270,28 @@ function WBase-CNGTest
     if ($Side -eq "host") {
         $CNGTestPSOut = Invoke-Command -ScriptBlock {
             Param($CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog)
-            Start-Process -FilePath $CNGTestExe `
-                          -ArgumentList $CNGTestArges `
-                          -RedirectStandardOutput $CNGTestOutLog `
-                          -RedirectStandardError $CNGTestErrorLog `
-                          -NoNewWindow
+            $CNGTestProcess = Start-Process -FilePath $CNGTestExe `
+                -ArgumentList $CNGTestArges `
+                -RedirectStandardOutput $CNGTestOutLog `
+                -RedirectStandardError $CNGTestErrorLog `
+                -NoNewWindow `
+                -PassThru
+            return $CNGTestProcess
         } -ArgumentList $CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog
     } elseif ($Side -eq "remote") {
         $CNGTestPSOut = Invoke-Command -Session $Session -ScriptBlock {
             Param($CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog)
-            Start-Process -FilePath $CNGTestExe `
-                          -ArgumentList $CNGTestArges `
-                          -RedirectStandardOutput $CNGTestOutLog `
-                          -RedirectStandardError $CNGTestErrorLog `
-                          -NoNewWindow
+            $CNGTestProcess = Start-Process -FilePath $CNGTestExe `
+                -ArgumentList $CNGTestArges `
+                -RedirectStandardOutput $CNGTestOutLog `
+                -RedirectStandardError $CNGTestErrorLog `
+                -NoNewWindow `
+                -PassThru
+            return $CNGTestProcess
         } -ArgumentList $CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog
     }
+
+    $ReturnValue.process = $CNGTestPSOut
 
     return $ReturnValue
 }

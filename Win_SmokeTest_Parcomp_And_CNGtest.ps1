@@ -26,8 +26,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -492,7 +495,7 @@ try {
                                     } else {
                                         if ($SmokeTestTestType -eq "Base") {
                                             if ($SmokeTestModeType -eq "HVMode") {
-                                                $CNGTestResult = WTW-CNGTestBase `
+                                                $CNGTestResult = WTW-CNGTest `
                                                     -algo $TestCase.Algo `
                                                     -operation $TestCase.Operation `
                                                     -provider $TestCase.Provider `
@@ -501,8 +504,7 @@ try {
                                                     -ecccurve $TestCase.Ecccurve `
                                                     -numThreads $TestCase.Thread `
                                                     -numIter $TestCase.Iteration `
-                                                    -TestPathName $CNGtestTestPathName `
-                                                    -BertaResultPath $BertaResultPath
+                                                    -TestType "Performance_Parameter"
                                             } else {
                                                 $CNGTestResult = WinHost-CNGTestBase `
                                                     -algo $TestCase.Algo `
@@ -544,7 +546,7 @@ try {
                                                 $SmokeTestTestType
 
                                             if ($SmokeTestModeType -eq "HVMode") {
-                                                $CNGTestResult = WTW-CNGTestPerformance `
+                                                $CNGTestResult = WTW-CNGTest `
                                                     -algo $TestCase.Algo `
                                                     -operation $TestCase.Operation `
                                                     -provider $TestCase.Provider `
@@ -553,8 +555,7 @@ try {
                                                     -ecccurve $TestCase.Ecccurve `
                                                     -numThreads $TestCase.Thread `
                                                     -numIter $TestCase.Iteration `
-                                                    -TestPathName $CNGtestTestPathName `
-                                                    -BertaResultPath $BertaResultPath
+                                                    -TestType "Performance"
                                             } else {
                                                 $CNGTestResult = WinHost-CNGTestPerformance `
                                                     -algo $TestCase.Algo `
@@ -614,9 +615,8 @@ try {
                                                         -ecccurve $TestCase.Ecccurve `
                                                         -numThreads $TestCase.Thread `
                                                         -numIter $TestCase.Iteration `
-                                                        -TestPathName $CNGtestTestPathName `
-                                                        -BertaResultPath $BertaResultPath `
-                                                        -TestType $TestType
+                                                        -TestOperationType $TestType `
+                                                        -TestType "Fallback"
                                                 } else {
                                                     $CNGTestResult = WinHost-CNGTestSWfallback `
                                                         -algo $TestCase.Algo `
@@ -723,17 +723,19 @@ try {
                                     } else {
                                         if ($SmokeTestTestType -eq "Base") {
                                             if ($SmokeTestModeType -eq "HVMode") {
-                                                $ParcompTestResult = WTW-ParcompBase `
+                                                $ParcompTestResult = WTW-Parcomp `
                                                     -deCompressFlag $deCompressFlag `
                                                     -CompressProvider $TestCase.Provider `
                                                     -deCompressProvider $TestCase.Provider `
                                                     -QatCompressionType $TestCase.CompressionType `
                                                     -Level $TestCase.CompressionLevel `
                                                     -Chunk $TestCase.Chunk `
-                                                    -TestPathName $ParcompTestPathName `
-                                                    -BertaResultPath $BertaResultPath `
+                                                    -numThreads $TestCase.Thread `
+                                                    -numIterations $TestCase.Iteration `
+                                                    -blockSize $TestCase.Block `
                                                     -TestFileType $TestCase.TestFileType `
-                                                    -TestFileSize $TestCase.TestFileSize
+                                                    -TestFileSize $TestCase.TestFileSize `
+                                                    -TestType "Base_Parameter"
                                             } else {
                                                 $ParcompTestResult = WinHost-ParcompBase `
                                                     -deCompressFlag $deCompressFlag `
@@ -775,7 +777,7 @@ try {
                                                 $SmokeTestTestType
 
                                             if ($SmokeTestModeType -eq "HVMode") {
-                                                $ParcompTestResult = WTW-ParcompPerformance `
+                                                $ParcompTestResult = WTW-Parcomp `
                                                     -deCompressFlag $deCompressFlag `
                                                     -CompressProvider $TestCase.Provider `
                                                     -deCompressProvider $TestCase.Provider `
@@ -785,8 +787,7 @@ try {
                                                     -numThreads $TestCase.Thread `
                                                     -numIterations $TestCase.Iteration `
                                                     -blockSize $TestCase.Block `
-                                                    -TestPathName $ParcompTestPathName `
-                                                    -BertaResultPath $BertaResultPath `
+                                                    -TestType "Performance" `
                                                     -TestFileType $TestCase.TestFileType `
                                                     -TestFileSize $TestCase.TestFileSize
                                             } else {
@@ -842,7 +843,7 @@ try {
                                                 $testNameTmp = "{0}_{1}" -f $testName, $TestType
 
                                                 if ($SmokeTestModeType -eq "HVMode") {
-                                                    $ParcompTestResult = WTW-ParcompSWfallback `
+                                                    $ParcompTestResult = WTW-Parcomp `
                                                         -CompressType $TestCase.CompressType `
                                                         -CompressProvider $TestCase.Provider `
                                                         -deCompressProvider $TestCase.Provider `
@@ -852,10 +853,10 @@ try {
                                                         -numIterations $TestCase.Iteration `
                                                         -blockSize $TestCase.Block `
                                                         -Chunk $TestCase.Chunk `
-                                                        -BertaResultPath $BertaResultPath `
+                                                        -TestOperationType $TestType `
                                                         -TestFileType $TestCase.TestFileType `
                                                         -TestFileSize $TestCase.TestFileSize `
-                                                        -TestType $TestType
+                                                        -TestType "Fallback"
                                                 } else {
                                                     $ParcompTestResult = WinHost-ParcompSWfallback `
                                                         -CompressType $TestCase.CompressType `
@@ -907,10 +908,10 @@ try {
 
                             if (-not $CompareFlag) {
                                 if ($SmokeTestModeType -eq "HVMode") {
-                                    $TestResultList = WTW-InstallerCheckDisable `
+                                    $TestResultList = WTW-Installer `
                                         -parcompFlag $parcompFlag `
                                         -cngtestFlag $cngtestFlag `
-                                        -BertaResultPath $BertaResultPath
+                                        -TestType "installer_static"
                                 } else {
                                     $TestResultList = WinHost-InstallerCheckDisable `
                                         -parcompFlag $parcompFlag `

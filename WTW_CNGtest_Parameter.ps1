@@ -28,7 +28,11 @@ Param(
 $TestSuitePath = Split-Path -Path $PSCommandPath
 Set-Variable -Name "QATTESTPATH" -Value $TestSuitePath -Scope global
 
-Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
+$ModuleStatus = Get-Module -Name "WinBase"
+if ([String]::IsNullOrEmpty($ModuleStatus)) {
+    Import-Module "$QATTESTPATH\\lib\\WinBase.psm1" -Force -DisableNameChecking
+}
+
 WBase-ReturnFilesInit `
     -BertaResultPath $BertaResultPath `
     -ResultFile $ResultFile | out-null
@@ -102,10 +106,10 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $CNGTestPathName = "CNGTest"
+    $TestType = "Performance_Parameter"
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType "PerfParameter"
+        [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $TestType
     }
 
     # Special: For QAT17
@@ -163,10 +167,11 @@ try {
                 $UQString = "NUQ"
             }
 
-            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_Perf_Parameter" -f
+            $testNameHeader = "Regression_WTW_{0}_{1}_{2}_{3}" -f
                 $LocationInfo.QatType,
                 $UQString,
-                $VMVFOSConfig
+                $VMVFOSConfig,
+                $TestType
 
             if (-not $CompareFlag) {
                 Win-DebugTimestamp -output ("Initialize test environment....")
@@ -209,7 +214,7 @@ try {
                     Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
                     $LocationInfo.TestCaseName = $testName
 
-                    $CNGTestResult = WTW-CNGTestBase `
+                    $CNGTestResult = WTW-CNGTest `
                         -algo $TestCase.Algo `
                         -operation $TestCase.Operation `
                         -provider $TestCase.Provider `
@@ -218,8 +223,7 @@ try {
                         -ecccurve $TestCase.Ecccurve `
                         -numThreads $TestCase.Thread `
                         -numIter $TestCase.Iteration `
-                        -TestPathName $CNGTestPathName `
-                        -BertaResultPath $BertaResultPath
+                        -TestType $TestType
 
                     if ($CNGTestResult.result) {
                         $CNGTestResult.result = $TestResultToBerta.Pass

@@ -69,7 +69,7 @@ try {
                     $TestSuiteName = "{0}\\WHost_Parcomp_Base_Parameter.ps1" -f $QATTESTPATH
                 }
 
-                if ($TestName -match "Perf_Parameter") {
+                if ($TestName -match "Performance_Parameter") {
                     if ($TestName -match "_qa_") {
                         $TestSuiteName = "{0}\\WHost_CNGtest_Parameter.ps1" -f $QATTESTPATH
                     } else {
@@ -108,7 +108,7 @@ try {
                     $TestSuiteName = "{0}\\WHost_Parcomp_Base_Parameter.ps1" -f $QATTESTPATH
                 }
 
-                if ($TestName -match "Perf_Parameter") {
+                if ($TestName -match "Performance_Parameter") {
                     if ($TestName -match "_qa_") {
                         $TestSuiteName = "{0}\\WTW_CNGtest_Parameter.ps1" -f $QATTESTPATH
                     } else {
