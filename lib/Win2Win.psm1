@@ -4,7 +4,7 @@ function WTW-RestartVMs
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [array]$VMNameList,
+        [string]$VMNameSuffix,
 
         [bool]$StopFlag = $true,
 
@@ -19,16 +19,15 @@ function WTW-RestartVMs
         [bool]$CheckFlag = $true
     )
 
+    $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+    $PSSessionName = "Session_{0}" -f $VMNameSuffix
     if ($StopFlag) {
-        $VMNameList | ForEach-Object {
-            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            HV-RestartVMHard `
-                -VMName $VMName `
-                -StopFlag $StopFlag `
-                -TurnOff $TurnOff `
-                -StartFlag $false `
-                -WaitFlag $false | out-null
-        }
+        HV-RestartVMHard `
+            -VMName $VMName `
+            -StopFlag $StopFlag `
+            -TurnOff $TurnOff `
+            -StartFlag $false `
+            -WaitFlag $false | out-null
     }
 
     if ($WaitFlag -and $StopFlag) {
@@ -36,15 +35,12 @@ function WTW-RestartVMs
     }
 
     if ($StartFlag) {
-        $VMNameList | ForEach-Object {
-            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            HV-RestartVMHard `
-                -VMName $VMName `
-                -StopFlag $false `
-                -TurnOff $false `
-                -StartFlag $StartFlag `
-                -WaitFlag $false | out-null
-        }
+        HV-RestartVMHard `
+            -VMName $VMName `
+            -StopFlag $false `
+            -TurnOff $false `
+            -StartFlag $StartFlag `
+            -WaitFlag $false | out-null
     }
 
     if ($WaitFlag -and $StartFlag) {
@@ -52,15 +48,11 @@ function WTW-RestartVMs
     }
 
     if ($SessionFlag) {
-        $VMNameList | ForEach-Object {
-            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            $PSSessionName = ("Session_{0}" -f $_)
-            HV-PSSessionCreate `
-                -VMName $VMName `
-                -PSName $PSSessionName `
-                -IsWin $true `
-                -CheckFlag $CheckFlag
-        }
+        HV-PSSessionCreate `
+            -VMName $VMName `
+            -PSName $PSSessionName `
+            -IsWin $true `
+            -CheckFlag $CheckFlag
     }
 }
 
@@ -89,12 +81,10 @@ function WTW-SetupVM
 
     # Create VMs
     HV-CreateVM -VMNameSuffix $VMNameSuffix | out-null
-    $VMNameList = [System.Array] @()
-    $VMNameList += $VMNameSuffix
 
     # Start VMs
     WTW-RestartVMs `
-        -VMNameList $VMNameList `
+        -VMNameSuffix $VMNameSuffix `
         -StopFlag $false `
         -TurnOff $false `
         -StartFlag $true `
@@ -269,7 +259,7 @@ function WTW-SetupVM
     if ($RestartVMFlag) {
         # reStart VMs
         WTW-RestartVMs `
-            -VMNameList $VMNameList `
+            -VMNameSuffix $VMNameSuffix ` `
             -StopFlag $true `
             -TurnOff $false `
             -StartFlag $true `
