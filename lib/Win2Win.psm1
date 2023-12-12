@@ -12,15 +12,10 @@ function WTW-RestartVMs
 
         [bool]$StartFlag = $true,
 
-        [bool]$WaitFlag = $true,
-
-        [bool]$SessionFlag = $true,
-
-        [bool]$CheckFlag = $true
+        [bool]$WaitFlag = $true
     )
 
     $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
-    $PSSessionName = "Session_{0}" -f $VMNameSuffix
     if ($StopFlag) {
         HV-RestartVMHard `
             -VMName $VMName `
@@ -31,7 +26,7 @@ function WTW-RestartVMs
     }
 
     if ($WaitFlag -and $StopFlag) {
-        Start-Sleep -Seconds 30
+        Start-Sleep -Seconds 10
     }
 
     if ($StartFlag) {
@@ -45,14 +40,6 @@ function WTW-RestartVMs
 
     if ($WaitFlag -and $StartFlag) {
         Start-Sleep -Seconds 30
-    }
-
-    if ($SessionFlag) {
-        HV-PSSessionCreate `
-            -VMName $VMName `
-            -PSName $PSSessionName `
-            -IsWin $true `
-            -CheckFlag $CheckFlag
     }
 }
 
@@ -88,9 +75,7 @@ function WTW-SetupVM
         -StopFlag $false `
         -TurnOff $false `
         -StartFlag $true `
-        -WaitFlag $true `
-        -SessionFlag $false `
-        -CheckFlag $false | out-null
+        -WaitFlag $true | out-null
 
     $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
     $PSSessionName = ("Session_{0}" -f $VMNameSuffix)
@@ -263,8 +248,12 @@ function WTW-SetupVM
             -StopFlag $true `
             -TurnOff $false `
             -StartFlag $true `
-            -WaitFlag $true `
-            -SessionFlag $true | out-null
+            -WaitFlag $true | out-null
+
+        $Session = HV-PSSessionCreate `
+            -VMName $VMName `
+            -PSName $PSSessionName `
+            -IsWin $true
     }
 
     # Install qat cert

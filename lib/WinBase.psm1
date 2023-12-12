@@ -2071,35 +2071,31 @@ function WBase-CheckProcessOutput
                 $ReturnValue.result = $false
                 $ReturnValue.error = "no_output"
             }
-
-            Win-DebugTimestamp -output (
-                "{0}: Can not get output and error log of the process" -f $LogKeyWord
-            )
         } else {
             if ($ReturnValue.result) {
                 $ReturnValue.result = $false
                 $ReturnValue.error = "process_error"
             }
-
-            Win-DebugTimestamp -output (
-                "{0}: Get error log of the process > {1}" -f $LogKeyWord, $ProcessErrorLog
-            )
         }
     } else {
-        if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
-            Win-DebugTimestamp -output (
-                "{0}: Get output log of the process > {1}" -f $LogKeyWord, $ProcessOutputLog
-            )
-        } else {
+        if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
             if ($ReturnValue.result) {
                 $ReturnValue.result = $false
                 $ReturnValue.error = "process_error"
             }
-
-            Win-DebugTimestamp -output (
-                "{0}: Get error log of the process > {1}" -f $LogKeyWord, $ProcessErrorLog
-            )
         }
+    }
+
+    if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
+        Win-DebugTimestamp -output (
+            "{0}: Get output log of the process > `r`n{1}" -f $LogKeyWord, $ProcessOutputLog
+        )
+    }
+
+    if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+        Win-DebugTimestamp -output (
+            "{0}: Get error log of the process > `r`n{1}" -f $LogKeyWord, $ProcessErrorLog
+        )
     }
 
     return $ReturnValue
