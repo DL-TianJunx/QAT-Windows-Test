@@ -360,8 +360,6 @@ try {
         }
     }
 
-    $CNGtestTestPathName = "CNGTest"
-    $ParcompTestPathName = "ParcompTest"
     $VMVFOSConfig = "1vm_1vf_windows2022"
 
     Foreach ($CompareType in $CompareTypes) {
@@ -515,7 +513,6 @@ try {
                                                     -ecccurve $TestCase.Ecccurve `
                                                     -numThreads $TestCase.Thread `
                                                     -numIter $TestCase.Iteration `
-                                                    -TestPathName $CNGtestTestPathName `
                                                     -BertaResultPath $BertaResultPath
                                             }
 
@@ -566,7 +563,6 @@ try {
                                                     -ecccurve $TestCase.Ecccurve `
                                                     -numThreads $TestCase.Thread `
                                                     -numIter $TestCase.Iteration `
-                                                    -TestPathName $CNGtestTestPathName `
                                                     -BertaResultPath $BertaResultPath
                                             }
 
@@ -627,7 +623,6 @@ try {
                                                         -ecccurve $TestCase.Ecccurve `
                                                         -numThreads $TestCase.Thread `
                                                         -numIter $TestCase.Iteration `
-                                                        -TestPathName $CNGtestTestPathName `
                                                         -BertaResultPath $BertaResultPath `
                                                         -TestType $TestType
                                                 }
@@ -744,7 +739,6 @@ try {
                                                     -QatCompressionType $TestCase.CompressionType `
                                                     -Level $TestCase.CompressionLevel `
                                                     -Chunk $TestCase.Chunk `
-                                                    -TestPathName $ParcompTestPathName `
                                                     -BertaResultPath $BertaResultPath `
                                                     -TestFileType $TestCase.TestFileType `
                                                     -TestFileSize $TestCase.TestFileSize
@@ -801,7 +795,6 @@ try {
                                                     -numThreads $TestCase.Thread `
                                                     -numIterations $TestCase.Iteration `
                                                     -blockSize $TestCase.Block `
-                                                    -TestPathName $ParcompTestPathName `
                                                     -BertaResultPath $BertaResultPath `
                                                     -TestFileType $TestCase.TestFileType `
                                                     -TestFileSize $TestCase.TestFileSize
