@@ -602,7 +602,7 @@ try {
                                                 $testNameTmp = "{0}_{1}" -f $testName, $TestType
 
                                                 if ($SmokeTestModeType -eq "HVMode") {
-                                                    $CNGTestResult = WTW-CNGTestSWfallback `
+                                                    $CNGTestResult = WTW-CNGTest `
                                                         -algo $TestCase.Algo `
                                                         -operation $TestCase.Operation `
                                                         -provider $TestCase.Provider `
