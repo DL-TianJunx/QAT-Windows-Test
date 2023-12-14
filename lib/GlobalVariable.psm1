@@ -85,8 +85,8 @@ $global:TraceLogOpts = [hashtable] @{
         Remote = [hashtable] @{
             IcpQat = "qatwin_remote_icpqat"
             CfQat = "qatwin_remote_cfqat"
-            UCpmProv = "qatwin_host_UCpmProv"
-            CpmBCrypt = "qatwin_host_CpmBCrypt"
+            UCpmProv = "qatwin_remote_UCpmProv"
+            CpmBCrypt = "qatwin_remote_CpmBCrypt"
         }
     }
     PDBDriverPath = [hashtable] @{
