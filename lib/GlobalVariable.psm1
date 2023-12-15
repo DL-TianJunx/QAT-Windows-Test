@@ -11,7 +11,9 @@ $global:LocalPFDriverPath = "{0}\\PFDriver" -f $STVWinPath
 $global:LocalVFDriverPath = "{0}\\VFDriver" -f $STVWinPath
 $global:LocalLinuxPath = "{0}\\Linux" -f $STVWinPath
 $global:LocalProcessPath = "{0}\\Process" -f $STVWinPath
-$global:LocalProcessKeyFilePath = "{0}\\LocationInfo.txt" -f $LocalProcessPath
+$global:LocalInfoFilePath = "{0}\\LocationInfo.json" -f $LocalProcessPath
+$global:RemoteInfoFilePath = "{0}\\RemoteInfo.json" -f $LocalProcessPath
+$global:OperationCompletedFlag = "OperationCompletedFlag.txt"
 
 # About QAT driver
 $global:Certificate = [hashtable] @{

@@ -1652,22 +1652,83 @@ function WBase-DoubleCheckDriver
 }
 
 # About test process
-function WBase-GenerateProcessKey
+function WBase-WriteHashtableToJsonFile
 {
-    if (Test-Path -Path $LocalProcessKeyFilePath) {
+    Param(
+        [Parameter(Mandatory=$True)]
+        [hashtable]$Info,
+
+        [Parameter(Mandatory=$True)]
+        [string]$InfoFilePath
+    )
+
+    if (Test-Path -Path $InfoFilePath) {
         Remove-Item `
-            -Path $LocalProcessKeyFilePath `
+            -Path $InfoFilePath `
             -Force `
             -Confirm:$false `
             -ErrorAction Stop | out-null
     }
-    $LocationInfo | ConvertTo-Json -Depth 5 | Out-File $LocalProcessKeyFilePath -Append -Encoding ascii
+
+    $Info | ConvertTo-Json -Depth 5 | Out-File $InfoFilePath -Encoding ascii
+
+    return $InfoFilePath
 }
 
-function WBase-GetProcessKey
+function WBase-ReadHashtableFromJsonFile
 {
-    $ProcessKey = Get-Content -Path $LocalProcessKeyFilePath -Raw
-    $global:LocationInfo = ConvertFrom-Json -InputObject $ProcessKey -AsHashtable
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$InfoFilePath
+    )
+
+    $ReturnValue = $null
+
+    $InfoFile = Get-Content -Path $InfoFilePath -Raw
+    $ReturnValue = ConvertFrom-Json -InputObject $InfoFile -AsHashtable
+
+    return $ReturnValue
+}
+
+function WBase-GenerateInfoFile
+{
+    Param(
+        [hashtable]$Info = $null,
+
+        [string]$InfoFilePath = $null
+    )
+
+    if ([String]::IsNullOrEmpty($Info)) {
+        $Info = $global:LocationInfo
+    }
+
+    if ([String]::IsNullOrEmpty($InfoFilePath)) {
+        $InfoFilePath = $global:LocalInfoFilePath
+    }
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $Info `
+        -InfoFilePath $InfoFilePath | out-null
+
+    return $InfoFilePath
+}
+
+function WBase-GetInfoFile
+{
+    Param(
+        [string]$InfoFilePath = $null
+    )
+
+    $ReturnValue = $null
+
+    if ([String]::IsNullOrEmpty($InfoFilePath)) {
+        $InfoFilePath = $global:LocalInfoFilePath
+    }
+
+    $ReturnValue = WBase-ReadHashtableFromJsonFile -InfoFilePath $InfoFilePath
+    $global:LocationInfo = $ReturnValue
+
+    return $ReturnValue
 }
 
 function WBase-StartProcess
@@ -1722,7 +1783,7 @@ function WBase-StartProcess
             -ErrorAction Stop | out-null
     }
 
-    $ProcessResultName = "ProcessResult_{0}.txt" -f $keyWords
+    $ProcessResultName = "ProcessResult_{0}.json" -f $keyWords
     $ProcessResultPath = "{0}\\{1}" -f $LocalProcessPath, $ProcessResultName
     $ReturnValue.Result = $ProcessResultPath
     if (Test-Path -Path $ProcessResultPath) {
@@ -1758,6 +1819,8 @@ function WBase-CheckProcessNumber
 
         [int]$ProcessNumber = 1,
 
+        [bool]$Remote = $false,
+
         [object]$Session = $null
     )
 
@@ -1766,7 +1829,7 @@ function WBase-CheckProcessNumber
         error = "no_error"
     }
 
-    if ($LocationInfo.HVMode) {
+    if ($Remote) {
         $LogKeyWord = $Session.Name
         $ProcessError = $null
         $ProcessValue = Invoke-Command -Session $Session -ScriptBlock {
@@ -2049,12 +2112,11 @@ function WBase-CheckProcessOutput
 
     if ($CheckResultFlag) {
         if ([System.IO.File]::Exists($ProcessResult)) {
-            $ProcessResultTxt = Get-Content -Path $ProcessResult -Raw
-            if ([String]::IsNullOrEmpty($ProcessResultTxt)) {
+            $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $ProcessResult
+            if ([String]::IsNullOrEmpty($ProcessResultHashtable)) {
                 $ReturnValue.result = $false
                 $ReturnValue.error = "no_test_result"
             } else {
-                $ProcessResultHashtable = ConvertFrom-Json -InputObject $ProcessResultTxt -AsHashtable
                 $ReturnValue.result = $ProcessResultHashtable.result
                 $ReturnValue.error = $ProcessResultHashtable.error
                 $ReturnValue.testResult = $ProcessResultHashtable
@@ -2669,7 +2731,10 @@ function WBase-CheckOutputFile
                     -Level $Level `
                     -Chunk $Chunk `
                     -blockSize $blockSize `
+                    -numThreads 1 `
+                    -numIterations 1 `
                     -TestPath $TestParcompOutFile.path `
+                    -ParcompType "Fallback" `
                     -runParcompType "Process" `
                     -TestFilelocation $TestFilelocation `
                     -TestFilefullPath $TestParcompOutFile.file

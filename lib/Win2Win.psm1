@@ -54,14 +54,14 @@ function WTW-RemoveVMs
 }
 
 # About test ENV init
-function WTW-SetupVM
+function WTW-ProcessVMInit
 {
     Param(
         [Parameter(Mandatory=$True)]
         [string]$VMNameSuffix
     )
 
-    WBase-GetProcessKey | out-null
+    WBase-GetInfoFile | out-null
 
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
@@ -256,6 +256,9 @@ function WTW-SetupVM
             -IsWin $true
     }
 
+    # Run tracelog
+    UT-TraceLogStart -Remote $true -Session $Session | out-null
+
     # Install qat cert
     UT-SetCertificate `
         -CertFile $Certificate.Remote `
@@ -332,9 +335,6 @@ function WTW-SetupVM
             -Session $Session `
             -DisableFlag $true | out-null
     }
-
-    # Run tracelog
-    UT-TraceLogStart -Remote $true -Session $Session | out-null
 }
 
 function WTW-ENVInit
@@ -347,6 +347,8 @@ function WTW-ENVInit
     )
 
     HV-VMVFConfigInit -VMVFOSConfig $VMVFOSConfig | out-null
+
+    WBase-GenerateInfoFile | out-null
 
     $VMNameList = $LocationInfo.VM.NameArray
     $ProcessList = [hashtable] @{}
@@ -382,10 +384,8 @@ function WTW-ENVInit
         }
 
         # Start process of InitVM
-        WBase-GenerateProcessKey | out-null
-
         $VMNameList | ForEach-Object {
-            $InitVMProcessArgs = "WTW-SetupVM -VMNameSuffix {0}" -f $_
+            $InitVMProcessArgs = "WTW-ProcessVMInit -VMNameSuffix {0}" -f $_
             $InitVMProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
                 -ProcessArgs $InitVMProcessArgs `
@@ -588,6 +588,27 @@ function WTW-EnableAndDisableQatDevice
     return $PNPCheckflag
 }
 
+function WTW-WaitOperationCompleted
+{
+    Win-DebugTimestamp -output ("Wait operation to complete...")
+
+    $StopFlag = $true
+    $TimeInterval = 3
+    $OperationCompletedFlagPath = "{0}\\{1}" -f
+        $LocalProcessPath,
+        $OperationCompletedFlag
+
+    do {
+        Start-Sleep -Seconds $TimeInterval
+        if (Test-Path -Path $OperationCompletedFlagPath) {
+            Win-DebugTimestamp -output ("The operation is completed")
+            $StopFlag = $false
+        } else {
+            $StopFlag = $true
+        }
+    } while ($StopFlag)
+}
+
 # Test: installer check
 function WTW-ProcessInstaller
 {
@@ -651,7 +672,7 @@ function WTW-ProcessInstaller
         }
     }
 
-    WBase-GetProcessKey | out-null
+    WBase-GetInfoFile | out-null
 
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
@@ -913,7 +934,7 @@ function WTW-Installer
     $InstallerProcessList = [hashtable] @{}
     $ProcessIDArray = [System.Array] @()
 
-    WBase-GenerateProcessKey | out-null
+    WBase-GenerateInfoFile | out-null
 
     # Run installer test as process
     $VMNameList | ForEach-Object {
@@ -1075,7 +1096,7 @@ function WTW-ProcessParcomp
         testOps = $null
     }
 
-    WBase-GetProcessKey | out-null
+    WBase-GetInfoFile | out-null
 
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
@@ -1093,7 +1114,7 @@ function WTW-ProcessParcomp
 
     $ParcompTestOutLogPath = "{0}\\{1}" -f $TestPath, $ParcompOpts.OutputLog
     $ParcompTestErrorLogPath = "{0}\\{1}" -f $TestPath, $ParcompOpts.ErrorLog
-    $ParcompTestResultName = "ProcessResult_{0}.txt" -f $keyWords
+    $ParcompTestResultName = "ProcessResult_{0}.json" -f $keyWords
     $ParcompTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $ParcompTestResultName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
@@ -1132,38 +1153,48 @@ function WTW-ProcessParcomp
 
     Start-Sleep -Seconds 3
 
+    # For Fallback test, wait operation completed
+    if ($TestType -eq "Fallback") {
+        WTW-WaitOperationCompleted | out-null
+    }
+
     # Double check the output log
     if ($runParcompType -eq "Process") {
         # Wait parcomp test process
-        WBase-WaitProcessToCompletedByID `
+        $WaitStatus = WBase-WaitProcessToCompletedByID `
             -ProcessID $ParcompTestResult.process.ID `
             -Remote $true `
-            -Session $Session | out-null
+            -Session $Session
+        if (-not $WaitStatus.result) {
+            $ReturnValue.result = $WaitStatus.result
+            $ReturnValue.error = $WaitStatus.error
+        }
 
         Start-Sleep -Seconds 3
 
         # Check parcomp test result
-        $CheckOutput = WBase-CheckOutputLog `
-            -TestOutputLog $ParcompTestOutLogPath `
-            -TestErrorLog $ParcompTestErrorLogPath `
-            -Session $Session `
-            -Remote $true `
-            -keyWords "Mbps"
-
-        $ReturnValue.result = $CheckOutput.result
-        $ReturnValue.error = $CheckOutput.error
-        $ReturnValue.testOps = $CheckOutput.testOps
-
-        $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-        $ReturnValueWrite | Out-File $ParcompTestResultPath -Encoding ascii
+        if ($ReturnValue.result) {
+            $CheckOutput = WBase-CheckOutputLog `
+                -TestOutputLog $ParcompTestOutLogPath `
+                -TestErrorLog $ParcompTestErrorLogPath `
+                -Session $Session `
+                -Remote $true `
+                -keyWords "Mbps"
+            if (-not $CheckOutput.result) {
+                $ReturnValue.result = $CheckOutput.result
+                $ReturnValue.error = $CheckOutput.error
+                $ReturnValue.testOps = $CheckOutput.testOps
+            }
+        }
     } else {
         $ReturnValue.result = $ParcompTestResult.result
         $ReturnValue.error = $ParcompTestResult.error
         $ReturnValue.testOps = $ParcompTestResult.testOps
-
-        $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-        $ReturnValueWrite | Out-File $ParcompTestResultPath -Encoding ascii
     }
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $ReturnValue `
+        -InfoFilePath $ParcompTestResultPath | out-null
 
     # Double check the output files
     if (($CheckOutputFileFlag) -and ($ReturnValue.result)) {
@@ -1183,11 +1214,14 @@ function WTW-ProcessParcomp
             -TestFileSize $TestFileSize `
             -TestPath $TestPath
 
-        $ReturnValue.result = $CheckMD5Result.result
-        $ReturnValue.error = $CheckMD5Result.error
+        if (-not $CheckMD5Result.result) {
+            $ReturnValue.result = $CheckMD5Result.result
+            $ReturnValue.error = $CheckMD5Result.error
 
-        $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-        $ReturnValueWrite | Out-File $ParcompTestResultPath -Encoding ascii
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
     }
 
     # After parcomp fallback test, run simple parcomp test
@@ -1197,11 +1231,14 @@ function WTW-ProcessParcomp
         )
 
         $ParcompTestResult = WTW-SimpleParcomp -VMNameSuffix $VMNameSuffix
-        $ReturnValue.result = $ParcompTestResult.result
-        $ReturnValue.error = $ParcompTestResult.error
+        if (-not $ParcompTestResult.result) {
+            $ReturnValue.result = $ParcompTestResult.result
+            $ReturnValue.error = $ParcompTestResult.error
 
-        $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-        $ReturnValueWrite | Out-File $ParcompTestResultPath -Encoding ascii
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
     }
 
     # Handle all error
@@ -1297,7 +1334,14 @@ function WTW-Parcomp
         $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
 
-    WBase-GenerateProcessKey | out-null
+    WBase-GenerateInfoFile | out-null
+
+    $OperationCompletedFlagPath = "{0}\\{1}" -f
+        $LocalProcessPath,
+        $OperationCompletedFlag
+    if (Test-Path -Path $OperationCompletedFlagPath) {
+        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force
+    }
 
     # Run parcomp test as process
     $VMNameList | ForEach-Object {
@@ -1418,6 +1462,10 @@ function WTW-Parcomp
             $ReturnValue.result = $false
             $ReturnValue.error = ("operation_type_{0}" -f $TestOperationType)
         }
+
+        if (-not (Test-Path -Path $OperationCompletedFlagPath)) {
+            New-Item -Path $LocalProcessPath -Name $OperationCompletedFlag -ItemType "file" | out-null
+        }
     }
 
     # Check output and error log for parcomp process
@@ -1427,7 +1475,7 @@ function WTW-Parcomp
 
     $TotalOps = 0
     $VMNameList | ForEach-Object {
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
         Win-DebugTimestamp -output (
             "Host: The output log of parcomp process ---------------- {0}" -f $vmName
         )
@@ -1518,14 +1566,14 @@ function WTW-ProcessCNGTest
         testOps = $null
     }
 
-    WBase-GetProcessKey | out-null
+    WBase-GetInfoFile | out-null
 
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
 
     $CNGTestOutLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.OutputLog
     $CNGTestErrorLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.ErrorLog
-    $CNGTestResultName = "ProcessResult_{0}.txt" -f $keyWords
+    $CNGTestResultName = "ProcessResult_{0}.json" -f $keyWords
     $CNGTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $CNGTestResultName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
@@ -1557,25 +1605,40 @@ function WTW-ProcessCNGTest
         -numIter $numIter `
         -TestPath $TestPath
 
+    # For Fallback test, wait operation completed
+    if ($TestType -eq "Fallback") {
+        WTW-WaitOperationCompleted | out-null
+    }
+
     # Wait parcomp test process
-    WBase-WaitProcessToCompletedByID `
+    $WaitStatus = WBase-WaitProcessToCompletedByID `
         -ProcessID $CNGTestResult.process.ID `
         -Remote $true `
-        -Session $Session | out-null
+        -Session $Session
+    if (-not $WaitStatus.result) {
+        $ReturnValue.result = $WaitStatus.result
+        $ReturnValue.error = $WaitStatus.error
+    }
 
     Start-Sleep -Seconds 3
 
     # Double check the output log
-    $CheckOutput = WBase-CheckOutputLog `
-        -TestOutputLog $CNGTestOutLog `
-        -TestErrorLog $CNGTestErrorLog `
-        -Session $Session `
-        -Remote $true `
-        -keyWords "Ops/s"
+    if ($ReturnValue.result) {
+        $CheckOutput = WBase-CheckOutputLog `
+            -TestOutputLog $CNGTestOutLog `
+            -TestErrorLog $CNGTestErrorLog `
+            -Session $Session `
+            -Remote $true `
+            -keyWords "Ops/s"
 
-    $ReturnValue.result = $CheckOutput.result
-    $ReturnValue.error = $CheckOutput.error
-    $ReturnValue.testOps = $CheckOutput.testOps
+        $ReturnValue.result = $CheckOutput.result
+        $ReturnValue.error = $CheckOutput.error
+        $ReturnValue.testOps = $CheckOutput.testOps
+    }
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $ReturnValue `
+        -InfoFilePath $CNGTestResultPath | out-null
 
     # After fallback cngtest, run simple cngtest
     if (($TestType -eq "Fallback") -and ($ReturnValue.result)) {
@@ -1588,8 +1651,9 @@ function WTW-ProcessCNGTest
         $ReturnValue.error = $CNGTestResult.error
     }
 
-    $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-    $ReturnValueWrite | Out-File $CNGTestResultPath -Encoding ascii
+    WBase-WriteHashtableToJsonFile `
+        -Info $ReturnValue `
+        -InfoFilePath $CNGTestResultPath | out-null
 
     # Handle all error
     if (-not $ReturnValue.result) {
@@ -1693,7 +1757,14 @@ function WTW-CNGTest
         $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
     }
 
-    WBase-GenerateProcessKey | out-null
+    WBase-GenerateInfoFile | out-null
+
+    $OperationCompletedFlagPath = "{0}\\{1}" -f
+        $LocalProcessPath,
+        $OperationCompletedFlag
+    if (Test-Path -Path $OperationCompletedFlagPath) {
+        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force
+    }
 
     # Run cngtest as process
     $VMNameList | ForEach-Object {
@@ -1768,6 +1839,10 @@ function WTW-CNGTest
             Win-DebugTimestamp -output ("The fallback test does not support Operation type > {0}" -f $TestOperationType)
             $ReturnValue.result = $false
             $ReturnValue.error = ("operation_type_{0}" -f $TestOperationType)
+        }
+
+        if (-not (Test-Path -Path $OperationCompletedFlagPath)) {
+            New-Item -Path $LocalProcessPath -Name $OperationCompletedFlag -ItemType "file" | out-null
         }
     }
 

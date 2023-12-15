@@ -134,8 +134,6 @@ try {
         [System.Array]$VMVFOSConfigs = $AnalyzeResult.VMVFOS
     }
 
-    $TestFilefullPath = $null
-
     # Special: For QAT17
     if ($LocationInfo.QatType -eq "QAT17") {
         if ($LocationInfo.UQMode) {
@@ -253,20 +251,18 @@ try {
                     $LocationInfo.TestCaseName = $testName
 
                     $LiveMTestResult = Domain-LiveMParcomp `
+                        -RemoteInfo $DomainRemoteInfo `
                         -CompressType $TestCase.CompressType `
                         -CompressProvider $TestCase.Provider `
                         -deCompressProvider $TestCase.Provider `
                         -QatCompressionType $TestCase.CompressionType `
                         -Level $TestCase.CompressionLevel `
+                        -Chunk $TestCase.Chunk `
+                        -blockSize $TestCase.Block `
                         -numThreads $TestCase.Thread `
                         -numIterations $TestCase.Iteration `
-                        -blockSize $TestCase.Block `
-                        -Chunk $TestCase.Chunk `
-                        -TestFilefullPath $TestFilefullPath `
-                        -BertaResultPath $BertaResultPath `
                         -TestFileType $TestCase.TestFileType `
-                        -TestFileSize $TestCase.TestFileSize `
-                        -RemoteInfo $DomainRemoteInfo
+                        -TestFileSize $TestCase.TestFileSize
 
                     if ($LiveMTestResult.result) {
                         $LiveMTestResult.result = $TestResultToBerta.Pass

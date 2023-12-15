@@ -161,9 +161,6 @@ function Domain-RemoteInfoInit
     Invoke-Command -ScriptBlock {
         Enable-VMMigration
 
-        # & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
-        # & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
-
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
             -VirtualMachineMigrationAuthenticationType "Kerberos"
@@ -171,9 +168,6 @@ function Domain-RemoteInfoInit
 
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
         Enable-VMMigration
-
-        # & cmd /c 'winrm set winrm/config/service/auth @{CredSSP="true"}'
-        # & cmd /c 'winrm set winrm/config/service/auth @{Certificate="true"}'
 
         Set-VMHost `
             -UseAnyNetworkForMigration $true `
@@ -199,6 +193,7 @@ function Domain-RemoteInfoInit
         $LocationInfo.IsWin = $true
         $LocationInfo.VM.IsWin = $true
         $LocationInfo.WriteLogToConsole = $false
+        $LocationInfo.WriteLogToFile = $true
         $BertaConfig["TargetServer"] = $TargetServer
 
         WBase-ReturnFilesInit `
@@ -282,6 +277,459 @@ function Domain-RemoteRemoveVMs
     } | out-null
 }
 
+function Domain-ProcessParcomp
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$VMNameSuffix,
+
+        [Parameter(Mandatory=$True)]
+        [string]$keyWords,
+
+        [Parameter(Mandatory=$True)]
+        [string]$CompressType = "Compress",
+
+        [string]$CompressProvider = "qat",
+
+        [string]$deCompressProvider = "qat",
+
+        [string]$QatCompressionType = "dynamic",
+
+        [int]$Level = 1,
+
+        [int]$Chunk = 64,
+
+        [int]$blockSize = 4096,
+
+        [int]$numThreads = 6,
+
+        [int]$numIterations = 200,
+
+        [string]$TestFileType = "high",
+
+        [int]$TestFileSize = 200
+    )
+
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+    }
+
+    WBase-GetInfoFile | out-null
+    $LocationInfo.WriteLogToConsole = $true
+    $LocationInfo.WriteLogToFile = $false
+
+    $RemoteInfo = WBase-ReadHashtableFromJsonFile -InfoFilePath $RemoteInfoFilePath
+    $RemoteInfo.WriteLogToConsole = $false
+    $RemoteInfo.WriteLogToFile = $true
+
+    $ParcompType = "Fallback"
+    $runParcompType = "Process"
+    $ParcompTestResultName = "ProcessResult_{0}.json" -f $keyWords
+    $ParcompTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $ParcompTestResultName
+
+    $DomainPSSession = Domain-PSSessionCreate `
+        -RMName $LocationInfo.Domain.TargetServer `
+        -PSName $LocationInfo.Domain.PSSession.Name
+
+    $PSSessionName = "Session_{0}" -f $VMNameSuffix
+    $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+    $Session = HV-PSSessionCreate `
+        -VMName $VMName `
+        -PSName $PSSessionName `
+        -IsWin $true `
+        -CheckFlag $false
+
+    # Run tracelog
+    UT-TraceLogStart -Remote $true -Session $Session | out-null
+
+    Win-DebugTimestamp -output (
+        "{0}: Start to process of Live Migration test..." -f $PSSessionName
+    )
+
+    # Run parcomp test
+    $ProcessCount = 0
+    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+        $ProcessCount += 1
+        $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
+        $CompressTestResult = WBase-Parcomp `
+            -Side "remote" `
+            -VMNameSuffix $VMNameSuffix `
+            -deCompressFlag $false `
+            -CompressProvider $CompressProvider `
+            -deCompressProvider $deCompressProvider `
+            -QatCompressionType $QatCompressionType `
+            -Level $Level `
+            -Chunk $Chunk `
+            -blockSize $blockSize `
+            -numThreads $numThreads `
+            -numIterations $numIterations `
+            -ParcompType $ParcompType `
+            -runParcompType $runParcompType `
+            -TestPath $CompressTestPath `
+            -TestFileType $TestFileType `
+            -TestFileSize $TestFileSize
+
+        Start-Sleep -Seconds 5
+    }
+
+    if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+        $ProcessCount += 1
+        $deCompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
+        $deCompressTestResult = WBase-Parcomp `
+            -Side "remote" `
+            -VMNameSuffix $VMNameSuffix `
+            -deCompressFlag $true `
+            -CompressProvider $CompressProvider `
+            -deCompressProvider $deCompressProvider `
+            -QatCompressionType $QatCompressionType `
+            -Level $Level `
+            -Chunk $Chunk `
+            -blockSize $blockSize `
+            -numThreads $numThreads `
+            -numIterations $numIterations `
+            -ParcompType $ParcompType `
+            -runParcompType $runParcompType `
+            -TestPath $deCompressTestPath `
+            -TestFileType $TestFileType `
+            -TestFileSize $TestFileSize
+
+        Start-Sleep -Seconds 5
+    }
+
+    # Check parcomp test process number
+    $CheckProcessNumberFlag = WBase-CheckProcessNumber `
+        -ProcessName "parcomp" `
+        -ProcessNumber $ProcessCount `
+        -Remote $true `
+        -Session $Session
+    if (-not $CheckProcessNumberFlag.result) {
+        $ReturnValue.result = $CheckProcessNumberFlag.result
+        $ReturnValue.error = $CheckProcessNumberFlag.error
+    }
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $ReturnValue `
+        -InfoFilePath $ParcompTestResultPath | out-null
+
+    # wait operation completed
+    WTW-WaitOperationCompleted | out-null
+
+    # Rename vm on the target machine
+    if ($ReturnValue.result) {
+        Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($VMName, $VMNameSuffix)
+            $NewVMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+            Rename-VM -Name $VMName -NewName $NewVMName
+        } -ArgumentList $VMName, $VMNameSuffix | out-null
+    }
+
+    # reAdd VFs for VMs on the target machine
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output ("{0}: reAdd VFs on the target machine" -f $DomainPSSession.Name)
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSession.Name
+
+        $reAddStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($RemoteInfo, $VMNameSuffix)
+            $ReturnValue = [hashtable] @{
+                result = $true
+                error = "no_error"
+            }
+
+            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+            $global:LocationInfo = $RemoteInfo
+            HV-AssignableDeviceAdd `
+                -VMName $VMName `
+                -PFVFArray $LocationInfo.VF.PFVFList[$VMNameSuffix] | out-null
+
+            $CheckResult = HV-AssignableDeviceCheck `
+                -VMName $VMName `
+                -PFVFArray $LocationInfo.VF.PFVFList[$VMNameSuffix]
+            if (-not $CheckResult) {
+                $ReturnValue.result = $false
+                $ReturnValue.error = "reAdd_device_fail"
+            }
+
+            return $ReturnValue
+        } -ArgumentList $RemoteInfo, $VMNameSuffix
+
+        if ($reAddStatus.result) {
+            Win-DebugTimestamp -output ("{0}: reAdd all VFs is passed" -f $DomainPSSession.Name)
+        } else {
+            Win-DebugTimestamp -output ("{0}: reAdd all VFs is failed" -f $DomainPSSession.Name)
+            $ReturnValue.result = $reAddStatus.result
+            $ReturnValue.error = $reAddStatus.error
+
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
+    }
+
+    # Double check the output log
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output (
+            "{0}: Double check output log on the target machine" -f $DomainPSSession.Name
+        )
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSession.Name
+
+        $CheckOutputLogStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($RemoteInfo, $VMNameSuffix, $CompressType)
+            $ReturnValue = [hashtable] @{
+                result = $true
+                error = "no_error"
+            }
+
+            $PSSessionName = "Session_{0}" -f $VMNameSuffix
+            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+            $Session = HV-PSSessionCreate `
+                -VMName $VMName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false
+
+            $global:LocationInfo = $RemoteInfo
+
+            $WaitStatus = WBase-WaitProcessToCompletedByName `
+                -ProcessID "parcomp" `
+                -Remote $true `
+                -Session $Session
+            if (-not $WaitStatus.result) {
+                $ReturnValue.result = $WaitStatus.result
+                $ReturnValue.error = $WaitStatus.error
+                return $ReturnValue
+            }
+
+            Start-Sleep -Seconds 3
+
+            if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+                $CompressTestOutLogPath = "{0}\\{1}\\{2}" -f
+                    $STVWinPath,
+                    $ParcompOpts.CompressPathName,
+                    $ParcompOpts.OutputLog
+                $CompressTestErrorLogPath = "{0}\\{1}\\{2}" -f
+                    $STVWinPath,
+                    $ParcompOpts.CompressPathName,
+                    $ParcompOpts.ErrorLog
+                $CheckOutput = WBase-CheckOutputLog `
+                    -TestOutputLog $CompressTestOutLogPath `
+                    -TestErrorLog $CompressTestErrorLogPath `
+                    -Session $Session `
+                    -Remote $true `
+                    -keyWords "Mbps"
+                if (-not $CheckOutput.result) {
+                    $ReturnValue.result = $CheckOutput.result
+                    $ReturnValue.error = $CheckOutput.error
+                    return $ReturnValue
+                }
+            }
+
+            if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+                $deCompressTestOutLogPath = "{0}\\{1}\\{2}" -f
+                    $STVWinPath,
+                    $ParcompOpts.deCompressPathName,
+                    $ParcompOpts.OutputLog
+                $deCompressTestErrorLogPath = "{0}\\{1}\\{2}" -f
+                    $STVWinPath,
+                    $ParcompOpts.deCompressPathName,
+                    $ParcompOpts.ErrorLog
+                $CheckOutput = WBase-CheckOutputLog `
+                    -TestOutputLog $deCompressTestOutLogPath `
+                    -TestErrorLog $deCompressTestErrorLogPath `
+                    -Session $Session `
+                    -Remote $true `
+                    -keyWords "Mbps"
+                if (-not $CheckOutput.result) {
+                    $ReturnValue.result = $CheckOutput.result
+                    $ReturnValue.error = $CheckOutput.error
+                    return $ReturnValue
+                }
+            }
+
+            return $ReturnValue
+        } -ArgumentList $RemoteInfo, $VMNameSuffix, $CompressType
+
+        if ($CheckOutputLogStatus.result) {
+            Win-DebugTimestamp -output (
+                "{0}: Double check output log is passed" -f $DomainPSSession.Name
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Double check output log is failed" -f $DomainPSSession.Name
+            )
+            $ReturnValue.result = $CheckOutputLogStatus.result
+            $ReturnValue.error = $CheckOutputLogStatus.error
+
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
+    }
+
+    # Double check the output files
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output (
+            "{0}: Double check the output files on the target machine" -f $DomainPSSession.Name
+        )
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSession.Name
+
+        $ParcompArgs = [hashtable] @{
+            CompressType = $CompressType
+            CompressProvider = $CompressProvider
+            deCompressProvider = $deCompressProvider
+            QatCompressionType = $QatCompressionType
+            Level = $Level
+            Chunk = $Chunk
+            blockSize = $blockSize
+            TestFileType = $TestFileType
+            TestFileSize = $TestFileSize
+        }
+        $CheckOutputFileStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($RemoteInfo, $VMNameSuffix, $ParcompArgs)
+            $ReturnValue = [hashtable] @{
+                result = $true
+                error = "no_error"
+            }
+
+            $PSSessionName = "Session_{0}" -f $VMNameSuffix
+            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+            $Session = HV-PSSessionCreate `
+                -VMName $VMName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false
+
+            $global:LocationInfo = $RemoteInfo
+
+            if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+                $CompressTestLogPath = "{0}\\{1}" -f
+                    $STVWinPath,
+                    $ParcompOpts.CompressPathName
+                $CheckMD5Result = WBase-CheckOutputFile `
+                    -Remote $true `
+                    -Session $Session `
+                    -deCompressFlag $ParcompArgs.CompressType `
+                    -CompressProvider $ParcompArgs.CompressProvider `
+                    -deCompressProvider $ParcompArgs.deCompressProvider `
+                    -QatCompressionType $ParcompArgs.QatCompressionType `
+                    -Level $ParcompArgs.Level `
+                    -Chunk $ParcompArgs.Chunk `
+                    -blockSize $ParcompArgs.blockSize `
+                    -TestFileType $ParcompArgs.TestFileType `
+                    -TestFileSize $ParcompArgs.TestFileSize `
+                    -TestPath $CompressTestLogPath
+
+                if (-not $CheckMD5Result.result) {
+                    $ReturnValue.result = $CheckMD5Result.result
+                    $ReturnValue.error = $CheckMD5Result.error
+                    return $ReturnValue
+                }
+            }
+
+            if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+                $deCompressTestLogPath = "{0}\\{1}" -f
+                    $STVWinPath,
+                    $ParcompOpts.deCompressPathName
+                $CheckMD5Result = WBase-CheckOutputFile `
+                    -Remote $true `
+                    -Session $Session `
+                    -deCompressFlag $ParcompArgs.CompressType `
+                    -CompressProvider $ParcompArgs.CompressProvider `
+                    -deCompressProvider $ParcompArgs.deCompressProvider `
+                    -QatCompressionType $ParcompArgs.QatCompressionType `
+                    -Level $ParcompArgs.Level `
+                    -Chunk $ParcompArgs.Chunk `
+                    -blockSize $ParcompArgs.blockSize `
+                    -TestFileType $ParcompArgs.TestFileType `
+                    -TestFileSize $ParcompArgs.TestFileSize `
+                    -TestPath $deCompressTestLogPath
+
+                if (-not $CheckMD5Result.result) {
+                    $ReturnValue.result = $CheckMD5Result.result
+                    $ReturnValue.error = $CheckMD5Result.error
+                    return $ReturnValue
+                }
+            }
+
+            return $ReturnValue
+        } -ArgumentList $RemoteInfo, $VMNameSuffix, $ParcompArgs
+
+        if ($CheckOutputFileStatus.result) {
+            Win-DebugTimestamp -output (
+                "{0}: Double check the output files is passed" -f $DomainPSSession.Name
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Double check the output files is failed" -f $DomainPSSession.Name
+            )
+            $ReturnValue.result = $CheckOutputFileStatus.result
+            $ReturnValue.error = $CheckOutputFileStatus.error
+
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
+    }
+
+    # After parcomp fallback test, run simple parcomp test
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output (
+            "{0}: After parcomp fallback test, run simple parcomp test" -f $DomainPSSession.Name
+        )
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSession.Name
+
+        $SimpleParcompStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($RemoteInfo, $VMNameSuffix)
+            $ReturnValue = [hashtable] @{
+                result = $true
+                error = "no_error"
+            }
+
+            $PSSessionName = "Session_{0}" -f $VMNameSuffix
+            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+            $Session = HV-PSSessionCreate `
+                -VMName $VMName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false
+
+            $global:LocationInfo = $RemoteInfo
+
+            $ParcompTestResult = WTW-SimpleParcomp -VMNameSuffix $VMNameSuffix
+            if (-not $ParcompTestResult.result) {
+                $ReturnValue.result = $ParcompTestResult.result
+                $ReturnValue.error = $ParcompTestResult.error
+            }
+
+            return $ReturnValue
+        } -ArgumentList $RemoteInfo, $VMNameSuffix
+
+        if ($SimpleParcompStatus.result) {
+            Win-DebugTimestamp -output (
+                "{0}: The simple parcomp test is passed" -f $DomainPSSession.Name
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: The simple parcomp test is failed" -f $DomainPSSession.Name
+            )
+            $ReturnValue.result = $SimpleParcompStatus.result
+            $ReturnValue.error = $SimpleParcompStatus.error
+
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
+    }
+}
+
 function Domain-LiveMParcomp
 {
     Param(
@@ -298,23 +746,19 @@ function Domain-LiveMParcomp
 
         [int]$Level = 1,
 
-        [int]$numThreads = 6,
-
-        [int]$numIterations = 200,
-
         [int]$blockSize = 4096,
 
         [int]$Chunk = 64,
 
-        [string]$TestFilefullPath = $null,
+        [int]$numThreads = 6,
+
+        [int]$numIterations = 200,
 
         [string]$TestFileType = "high",
 
         [int]$TestFileSize = 200,
 
-        [string]$QatDriverZipPath = $null,
-
-        [string]$BertaResultPath = "C:\\temp"
+        [string]$TestPath = $null
     )
 
     $ReturnValue = [hashtable] @{
@@ -323,615 +767,134 @@ function Domain-LiveMParcomp
     }
 
     $VMNameList = $LocationInfo.VM.NameArray
+    $ParcompProcessList = [hashtable] @{}
+    $ProcessIDArray = [System.Array] @()
+    $RMName = "{0}.QATWSTV_Domain.cc" -f $LocationInfo.Domain.TargetServer
 
-    # $LiveMTestResultsList = @{
-    #     vm = $null
-    #     result = $true
-    #     error = "no_error"
-    # }
-    $LiveMTestResultsList = @()
-
-    $VMNameList | ForEach-Object {
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $LiveMTestResultsList += @{
-            vm = $vmName
-            result = $true
-            error = "no_error"
-        }
+    if ([String]::IsNullOrEmpty($TestPath)) {
+        $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
 
-    $ParcompType = "Fallback"
-    $runParcompType = "Process"
-    $CompressTestPath = $ParcompOpts.CompressPathName
-    $deCompressTestPath = $ParcompOpts.deCompressPathName
+    WBase-GenerateInfoFile | out-null
+    WBase-WriteHashtableToJsonFile `
+        -Info $RemoteInfo `
+        -InfoFilePath $RemoteInfoFilePath | out-null
 
-    $vmNameBase = $env:COMPUTERNAME
-    $RMName = "{0}.QATWSTV_Domain.cc" -f $LocationInfo.Domain.TargetServer
     $DomainPSSession = Domain-PSSessionCreate `
         -RMName $LocationInfo.Domain.TargetServer `
         -PSName $LocationInfo.Domain.PSSession.Name
 
-    # Run tracelog and parcomp exe
-    $VMNameList | ForEach-Object {
-        $PSSessionName = ("Session_{0}" -f $_)
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        $Session = HV-PSSessionCreate `
-            -VMName $vmName `
-            -PSName $PSSessionName `
-            -IsWin $true
-
-        # Run tracelog
-        UT-TraceLogStart -Remote $true -Session $Session | out-null
-
-        Win-DebugTimestamp -output ("{0}: Start to Fallback test ({1}) with {2} provider!" -f $PSSessionName,
-                                                                                              $CompressType,
-                                                                                              $deCompressProvider)
-
-        $ProcessCount = 0
-        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
-            $ProcessCount += 1
-            $deCompressTestResult = WBase-Parcomp -Side "remote" `
-                                                  -VMNameSuffix $_ `
-                                                  -deCompressFlag $true `
-                                                  -CompressProvider $CompressProvider `
-                                                  -deCompressProvider $deCompressProvider `
-                                                  -QatCompressionType $QatCompressionType `
-                                                  -Level $Level `
-                                                  -Chunk $Chunk `
-                                                  -blockSize $blockSize `
-                                                  -numThreads $numThreads `
-                                                  -numIterations $numIterations `
-                                                  -ParcompType $ParcompType `
-                                                  -runParcompType $runParcompType `
-                                                  -TestPathName $deCompressTestPath `
-                                                  -TestFilefullPath $TestFilefullPath `
-                                                  -TestFileType $TestFileType `
-                                                  -TestFileSize $TestFileSize
-        }
-
-        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-            $ProcessCount += 1
-            $CompressTestResult = WBase-Parcomp -Side "remote" `
-                                                -VMNameSuffix $_ `
-                                                -deCompressFlag $false `
-                                                -CompressProvider $CompressProvider `
-                                                -deCompressProvider $deCompressProvider `
-                                                -QatCompressionType $QatCompressionType `
-                                                -Level $Level `
-                                                -Chunk $Chunk `
-                                                -blockSize $blockSize `
-                                                -numThreads $numThreads `
-                                                -numIterations $numIterations `
-                                                -ParcompType $ParcompType `
-                                                -runParcompType $runParcompType `
-                                                -TestPathName $CompressTestPath `
-                                                -TestFilefullPath $TestFilefullPath `
-                                                -TestFileType $TestFileType `
-                                                -TestFileSize $TestFileSize
-        }
-
-        Start-Sleep -Seconds 10
-
-        # Check parcomp test process number
-        $CheckProcessNumberFlag = WBase-CheckProcessNumber -ProcessName "parcomp" `
-                                                           -ProcessNumber $ProcessCount `
-                                                           -Session $Session
-
-        $LiveMTestResultsList | ForEach-Object {
-            if ($_.vm -eq $vmName) {
-                $_.result = $CheckProcessNumberFlag.result
-                $_.error = $CheckProcessNumberFlag.error
-            }
-        }
+    $OperationCompletedFlagPath = "{0}\\{1}" -f
+        $LocalProcessPath,
+        $OperationCompletedFlag
+    if (Test-Path -Path $OperationCompletedFlagPath) {
+        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force
     }
 
-    # Operation: Move vm from the executing machine to the target machine
+    # Run parcomp test as process
     $VMNameList | ForEach-Object {
-        $PSSessionName = ("Session_{0}" -f $_)
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+        $ParcompProcessArgs = "Domain-ProcessParcomp -VMNameSuffix {0}" -f $_
+        $ParcompProcessArgs = "{0} -CompressType {1}" -f $ParcompProcessArgs, $CompressType
+        $ParcompProcessArgs = "{0} -CompressProvider {1}" -f $ParcompProcessArgs, $CompressProvider
+        $ParcompProcessArgs = "{0} -deCompressProvider {1}" -f $ParcompProcessArgs, $deCompressProvider
+        $ParcompProcessArgs = "{0} -QatCompressionType {1}" -f $ParcompProcessArgs, $QatCompressionType
+        $ParcompProcessArgs = "{0} -Level {1}" -f $ParcompProcessArgs, $Level
+        $ParcompProcessArgs = "{0} -Chunk {1}" -f $ParcompProcessArgs, $Chunk
+        $ParcompProcessArgs = "{0} -blockSize {1}" -f $ParcompProcessArgs, $blockSize
+        $ParcompProcessArgs = "{0} -numThreads {1}" -f $ParcompProcessArgs, $numThreads
+        $ParcompProcessArgs = "{0} -numIterations {1}" -f $ParcompProcessArgs, $numIterations
+        $ParcompProcessArgs = "{0} -TestFileType {1}" -f $ParcompProcessArgs, $TestFileType
+        $ParcompProcessArgs = "{0} -TestFileSize {1}" -f $ParcompProcessArgs, $TestFileSize
+        $ParcompkeyWords = "{0}_{1}" -f $CompressType, $_
+        $ParcompProcessArgs = "{0} -keyWords {1}" -f $ParcompProcessArgs, $ParcompkeyWords
 
-        # Move all VFs for VM
-        HV-AssignableDeviceRemove -VMName $vmName | out-null
+        $ParcompProcess = WBase-StartProcess `
+            -ProcessFilePath "pwsh" `
+            -ProcessArgs $ParcompProcessArgs `
+            -keyWords $ParcompkeyWords
 
-        Win-DebugTimestamp -output ("{0}: Start to move vm ...." -f $PSSessionName)
-        $DestinationStoragePath = "{0}\\{1}_{2}" -f
-            $VHDAndTestFiles.ChildVMPath,
-            $LocationInfo.Domain.TargetServer,
-            $_
-        Move-VM -Name $vmName `
+        $ParcompProcessList[$_] = [hashtable] @{
+            Output = $ParcompProcess.Output
+            Error = $ParcompProcess.Error
+            Result = $ParcompProcess.Result
+        }
+
+        $ProcessIDArray += $ParcompProcess.ID
+    }
+
+    # Move all VMs
+    if ($ReturnValue.result) {
+        Start-Sleep -Seconds 5
+
+        $VMNameList | ForEach-Object {
+            $PSSessionName = "Session_{0}" -f $_
+            $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
+            $Session = HV-PSSessionCreate `
+                -VMName $vmName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false
+
+            HV-AssignableDeviceRemove -VMName $vmName | out-null
+
+            Win-DebugTimestamp -output ("{0}: Start to move vm ...." -f $PSSessionName)
+            $DestinationStoragePath = "{0}\\{1}_{2}" -f
+                $VHDAndTestFiles.ChildVMPath,
+                $LocationInfo.Domain.TargetServer,
+                $_
+            Move-VM `
+                -Name $vmName `
                 -DestinationHost $RMName `
                 -IncludeStorage `
                 -DestinationStoragePath $DestinationStoragePath | out-null
 
-        $GetVMError = $null
-        $VM = Get-VM -Name $VMName -ErrorAction SilentlyContinue -ErrorVariable GetVMError
-        if ([String]::IsNullOrEmpty($GetVMError)) {
-            Win-DebugTimestamp -output ("{0}: Move vm is unsuccessful" -f $PSSessionName)
-            $LiveMTestResultsList | ForEach-Object {
-                if ($_.vm -eq $vmName) {
-                    $_.result = $false
-                    $_.error = "Move_VM_fail"
-                }
-            }
-        } else {
-            Win-DebugTimestamp -output ("{0}: Move vm is successful" -f $PSSessionName)
-        }
-
-        # Rename vm on the target machine
-        Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param($vmName, $_)
-            $NewvmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-            Rename-VM -Name $vmName -NewName $NewvmName
-        } -ArgumentList $vmName, $_ | out-null
-    }
-
-    # reAdd VFs for VMs on the target machine
-    if ($ReturnValue.result) {
-        $DomainPSSession = Domain-PSSessionCreate `
-            -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
-
-        Win-DebugTimestamp -output ("{0}: reAdd VFs on the target machine" -f $DomainPSSession.Name)
-        $VMNameList | ForEach-Object {
-            $vmName = "{0}_{1}" -f $LocationInfo.Domain.TargetServer, $_
-            ForEach ($PFVF in $RemoteInfo.VF.PFVFList[$_]) {
-                ForEach ($PFInstance in $RemoteInfo.PF.PCI) {
-                    if ([int]($PFVF.PF) -eq [int]($PFInstance.Id)) {
-                        Win-DebugTimestamp -output (
-                            "{0}: Adding QAT VF to {1} with InstancePath {2} and VF# {3}" -f
-                                $DomainPSSession.Name,
-                                $vmName,
-                                $PFInstance.Instance,
-                                $PFVF.VF
-                        )
-
-                        Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                            Param($vmName, $PFInstance, $PFVF)
-                            Add-VMAssignableDevice `
-                                -VMName $vmName `
-                                -LocationPath $PFInstance.Instance `
-                                -VirtualFunction $PFVF.VF | out-null
-                        } -ArgumentList $vmName, $PFInstance, $PFVF
-                    }
-                }
-            }
-        }
-
-        Win-DebugTimestamp -output ("{0}: Check VFs on the target machine" -f $DomainPSSession.Name)
-        $VMNameList | ForEach-Object {
-            $vmName = "{0}_{1}" -f $LocationInfo.Domain.TargetServer, $_
-            $ReAddDeviceStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                Param($vmName, $PFVFList)
-                $ReturnValue = $true
-
-                $CheckStatus = HV-AssignableDeviceCheck `
-                    -VMName $vmName `
-                    -PFVFArray $PFVFList
-                if (-not $CheckStatus) {
-                    if ($ReturnValue) {
-                        $ReturnValue = $false
-                    }
-                }
-
-                return $ReturnValue
-            } -ArgumentList $vmName, $RemoteInfo.VF.PFVFList[$_]
-
-            if ($ReAddDeviceStatus) {
-                Win-DebugTimestamp -output ("{0}: reAdd all VFs on {1} are passed" -f $DomainPSSession.Name, $vmName)
-            } else {
-                Win-DebugTimestamp -output ("{0}: reAdd all VFs on {1} are failed" -f $DomainPSSession.Name, $vmName)
+            $GetVMError = $null
+            $VM = Get-VM `
+                -Name $vmName `
+                -ErrorAction SilentlyContinue `
+                -ErrorVariable GetVMError
+            if ([String]::IsNullOrEmpty($GetVMError)) {
+                Win-DebugTimestamp -output ("{0}: Move vm is unsuccessful" -f $PSSessionName)
                 if ($ReturnValue.result) {
-                    $ReturnValue.result = $ReAddDeviceStatus
-                    $ReturnValue.error = "reAdd_device_fail"
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "Move_VM_fail"
                 }
-            }
-        }
-    }
-
-    # Wait the parcomp to complete and get test result
-    if ($ReturnValue.result) {
-        $DomainPSSession = Domain-PSSessionCreate `
-            -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
-
-        $VMNameList | ForEach-Object {
-            $PSSessionName = "Session_{0}" -f $_
-            $vmName = "{0}_{1}" -f $vmNameBase, $_
-            $vmNameSuffix = $_
-
-            $CompressTestOutLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $CompressTestPath, $ParcompOpts.OutputLog
-            $CompressTestErrorLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $CompressTestPath, $ParcompOpts.ErrorLog
-            $deCompressTestOutLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $deCompressTestPath, $ParcompOpts.OutputLog
-            $deCompressTestErrorLogPath = "{0}\\{1}\\{2}" -f $STVWinPath, $deCompressTestPath, $ParcompOpts.ErrorLog
-
-            $LiveMTestResultsList | ForEach-Object {
-                if ($_.vm -eq $vmName) {
-                    Win-DebugTimestamp -output (
-                        "{0}: {1}: Wait process to complete" -f
-                            $DomainPSSession.Name,
-                            $PSSessionName
-                    )
-                    # Wait parcomp test process to complete
-                    $WaitProcessFlag = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                        Param($RemoteInfo, $vmNameSuffix)
-                        $LocationInfo = $RemoteInfo
-                        $PSSessionName = "Session_{0}" -f $vmNameSuffix
-                        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $vmNameSuffix
-                        $Session = HV-PSSessionCreate `
-                            -VMName $vmName `
-                            -PSName $PSSessionName `
-                            -IsWin $true `
-                            -CheckFlag $false
-
-                        $WaitProcessFlag = WBase-WaitProcessToCompletedByName `
-                            -ProcessName "parcomp" `
-                            -Session $Session `
-                            -Remote $true
-
-                        return $WaitProcessFlag
-                    } -ArgumentList $RemoteInfo, $vmNameSuffix
-
-                    if ($WaitProcessFlag.result) {
-                        Win-DebugTimestamp -output (
-                            "{0}: {1}: The process is completed" -f
-                                $DomainPSSession.Name,
-                                $PSSessionName
-                        )
-                    } else {
-                        Win-DebugTimestamp -output (
-                            "{0}: {1}: The process is failed > {2}" -f
-                                $DomainPSSession.Name,
-                                $PSSessionName,
-                                $WaitProcessFlag.error
-                        )
-                        if ($_.result) {
-                            $_.result = $WaitProcessFlag.result
-                            $_.error = $WaitProcessFlag.error
-                        }
-                    }
-
-                    # Check parcomp test result
-                    Win-DebugTimestamp -output (
-                        "{0}: {1}: Check test result" -f $DomainPSSession.Name, $PSSessionName
-                    )
-
-                    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-                        $CheckOutput = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                            Param($RemoteInfo, $vmNameSuffix, $CompressTestOutLogPath, $CompressTestErrorLogPath)
-                            $LocationInfo = $RemoteInfo
-                            $PSSessionName = "Session_{0}" -f $vmNameSuffix
-                            $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $vmNameSuffix
-                            $Session = HV-PSSessionCreate `
-                                -VMName $vmName `
-                                -PSName $PSSessionName `
-                                -IsWin $true
-
-                            $CheckOutput = WBase-CheckOutputLog `
-                                -TestOutputLog $CompressTestOutLogPath `
-                                -TestErrorLog $CompressTestErrorLogPath `
-                                -Session $Session `
-                                -Remote $true `
-                                -keyWords "Mbps"
-
-                            return $CheckOutput
-                        } -ArgumentList $RemoteInfo, $vmNameSuffix, $CompressTestOutLogPath, $CompressTestErrorLogPath
-
-                        if ($CheckOutput.result) {
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: The Compress test is passed" -f $DomainPSSession.Name, $PSSessionName
-                            )
-                        } else {
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: The Compress test is failed" -f $DomainPSSession.Name, $PSSessionName
-                            )
-                            if ($_.result) {
-                                $_.result = $CheckOutput.result
-                                $_.error = $CheckOutput.error
-                            }
-                        }
-                    }
-
-                    if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
-                        $CheckOutput = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                            Param($RemoteInfo, $vmNameSuffix, $deCompressTestOutLogPath, $deCompressTestErrorLogPath)
-                            $LocationInfo = $RemoteInfo
-                            $PSSessionName = "Session_{0}" -f $vmNameSuffix
-                            $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $vmNameSuffix
-                            $Session = HV-PSSessionCreate `
-                                -VMName $vmName `
-                                -PSName $PSSessionName `
-                                -IsWin $true
-
-                            $CheckOutput = WBase-CheckOutputLog `
-                                -TestOutputLog $deCompressTestOutLogPath `
-                                -TestErrorLog $deCompressTestErrorLogPath `
-                                -Session $Session `
-                                -Remote $true `
-                                -keyWords "Mbps"
-
-                            return $CheckOutput
-                        } -ArgumentList $RemoteInfo, $vmNameSuffix, $deCompressTestOutLogPath, $deCompressTestErrorLogPath
-
-                        if ($CheckOutput.result) {
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: The deCompress test is passed" -f $DomainPSSession.Name, $PSSessionName
-                            )
-                        } else {
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: The deCompress test is failed" -f $DomainPSSession.Name, $PSSessionName
-                            )
-                            if ($_.result) {
-                                $_.result = $CheckOutput.result
-                                $_.error = $CheckOutput.error
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    # Double check the output files
-    if ($ReturnValue.result) {
-        $DomainPSSession = Domain-PSSessionCreate `
-            -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
-
-        $VMNameList | ForEach-Object {
-            $PSSessionName = "Session_{0}" -f $_
-            $vmName = "{0}_{1}" -f $vmNameBase, $_
-            $vmNameSuffix = $_
-
-            $LiveMTestResultsList | ForEach-Object {
-                if ($_.vm -eq $vmName) {
-                    if ($_.result) {
-                        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: Double check the output file of LiveM test (compress)" -f
-                                    $DomainPSSession.Name,
-                                    $PSSessionName
-                            )
-                            $MD5MatchFlag = $true
-                            $CheckMD5Result = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                                Param(
-                                    $RemoteInfo,
-                                    $vmNameSuffix,
-                                    $CompressProvider,
-                                    $deCompressProvider,
-                                    $QatCompressionType,
-                                    $Level,
-                                    $Chunk,
-                                    $TestFileType,
-                                    $TestFileSize,
-                                    $CompressTestPath
-                                )
-                                Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
-                                $LocationInfo = $RemoteInfo
-                                $PSSessionName = "Session_{0}" -f $vmNameSuffix
-                                $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $vmNameSuffix
-                                $Session = HV-PSSessionCreate `
-                                    -VMName $vmName `
-                                    -PSName $PSSessionName `
-                                    -IsWin $true
-
-                                $CheckMD5Result = WTW-RemoteCheckMD5 `
-                                    -Session $Session `
-                                    -deCompressFlag $false `
-                                    -CompressProvider $CompressProvider `
-                                    -deCompressProvider $deCompressProvider `
-                                    -QatCompressionType $QatCompressionType `
-                                    -Level $Level `
-                                    -Chunk $Chunk `
-                                    -TestFileType $TestFileType `
-                                    -TestFileSize $TestFileSize `
-                                    -TestPathName $CompressTestPath
-
-                                return $CheckMD5Result
-                            } -ArgumentList $RemoteInfo,
-                                            $vmNameSuffix,
-                                            $CompressProvider,
-                                            $deCompressProvider,
-                                            $QatCompressionType,
-                                            $Level,
-                                            $Chunk,
-                                            $TestFileType,
-                                            $TestFileSize,
-                                            $CompressTestPath
-
-                            $TestSourceFileMD5 = $CheckMD5Result.SourceFile
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: The MD5 value of source file > {2}" -f
-                                    $DomainPSSession.Name,
-                                    $PSSessionName,
-                                    $TestSourceFileMD5
-                            )
-                            $FileCount = 0
-                            ForEach ($TestParcompOutFileMD5 in $CheckMD5Result.OutFile) {
-                                Win-DebugTimestamp -output (
-                                    "{0}: {1}: The MD5 value of LiveM test (compress) output file {2} > {3}" -f
-                                        $DomainPSSession.Name,
-                                        $PSSessionName,
-                                        $FileCount,
-                                        $TestParcompOutFileMD5
-                                )
-                                $FileCount++
-                                if ($TestParcompOutFileMD5 -ne $TestSourceFileMD5) {$MD5MatchFlag = $false}
-                            }
-                            if ($MD5MatchFlag) {
-                                Win-DebugTimestamp -output (
-                                    "{0}: {1}: The output file of LiveM test (compress) and the source file are matched!" -f
-                                        $DomainPSSession.Name,
-                                        $PSSessionName
-                                )
-                            } else {
-                                Win-DebugTimestamp -output (
-                                    "{0}: {1}: The output file of LiveM test (compress) and the source file are not matched!" -f
-                                        $DomainPSSession.Name,
-                                        $PSSessionName
-                                )
-
-                                $_.result = $false
-                                $_.error = "MD5_no_matched"
-                            }
-                        }
-
-                        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: Double check the output file of LiveM test (decompress)" -f
-                                    $DomainPSSession.Name,
-                                    $PSSessionName
-                            )
-                            $MD5MatchFlag = $true
-                            $CheckMD5Result = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-                                Param(
-                                    $RemoteInfo,
-                                    $vmNameSuffix,
-                                    $CompressProvider,
-                                    $deCompressProvider,
-                                    $QatCompressionType,
-                                    $Level,
-                                    $Chunk,
-                                    $TestFileType,
-                                    $TestFileSize,
-                                    $deCompressTestPath
-                                )
-                                Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
-                                $LocationInfo = $RemoteInfo
-                                $PSSessionName = "Session_{0}" -f $vmNameSuffix
-                                $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $vmNameSuffix
-                                $Session = HV-PSSessionCreate `
-                                    -VMName $vmName `
-                                    -PSName $PSSessionName `
-                                    -IsWin $true
-
-                                    $CheckMD5Result = WTW-RemoteCheckMD5 `
-                                        -Session $Session `
-                                        -deCompressFlag $true `
-                                        -CompressProvider $CompressProvider `
-                                        -deCompressProvider $deCompressProvider `
-                                        -QatCompressionType $QatCompressionType `
-                                        -Level $Level `
-                                        -Chunk $Chunk `
-                                        -TestFileType $TestFileType `
-                                        -TestFileSize $TestFileSize `
-                                        -TestPathName $deCompressTestPath
-
-                                return $CheckMD5Result
-                            } -ArgumentList $RemoteInfo,
-                                            $vmNameSuffix,
-                                            $CompressProvider,
-                                            $deCompressProvider,
-                                            $QatCompressionType,
-                                            $Level,
-                                            $Chunk,
-                                            $TestFileType,
-                                            $TestFileSize,
-                                            $deCompressTestPath
-
-                            $TestSourceFileMD5 = $CheckMD5Result.SourceFile
-                            Win-DebugTimestamp -output (
-                                "{0}: {1}: The MD5 value of source file > {2}" -f
-                                    $DomainPSSession.Name,
-                                    $PSSessionName,
-                                    $TestSourceFileMD5
-                            )
-                            $FileCount = 0
-                            ForEach ($TestParcompOutFileMD5 in $CheckMD5Result.OutFile) {
-                                Win-DebugTimestamp -output (
-                                    "{0}: {1}: The MD5 value of LiveM test (decompress) output file {2} > {3}" -f
-                                        $DomainPSSession.Name,
-                                        $PSSessionName,
-                                        $FileCount,
-                                        $TestParcompOutFileMD5
-                                )
-                                $FileCount++
-                                if ($TestParcompOutFileMD5 -ne $TestSourceFileMD5) {$MD5MatchFlag = $false}
-                            }
-                            if ($MD5MatchFlag) {
-                                Win-DebugTimestamp -output (
-                                    "{0}: {1}: The output file of LiveM test (decompress) and the source file are matched!" -f
-                                        $DomainPSSession.Name,
-                                        $PSSessionName
-                                )
-                            } else {
-                                Win-DebugTimestamp -output (
-                                    "{0}: {1}: The output file of LiveM test (decompress) and the source file are not matched!" -f
-                                        $DomainPSSession.Name,
-                                        $PSSessionName
-                                )
-
-                                if ($_.result) {$_.result = $false}
-                                if ($_.error -ne "MD5_no_matched") {$_.error = "MD5_no_matched"}
-                            }
-                        }
-                    } else {
-                        Win-DebugTimestamp -output (
-                            "{0}: {1}: Skip checking the output files of LiveM test, because Error > {2}" -f
-                                $DomainPSSession.Name,
-                                $PSSessionName,
-                                $_.error
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    # Collate return value for all VMs
-    if ($ReturnValue.result) {
-        $testError = "|"
-        $LiveMTestResultsList | ForEach-Object {
-            if (!$_.result) {
-                $ReturnValue.result = $_.result
-                $testError = "{0}{1}->{2}|" -f $testError, $_.vm, $_.error
+            } else {
+                Win-DebugTimestamp -output ("{0}: Move vm is successful" -f $PSSessionName)
             }
         }
 
-        if (!$ReturnValue.result) {
-            $ReturnValue.error = $testError
+        if (-not (Test-Path -Path $OperationCompletedFlagPath)) {
+            New-Item -Path $LocalProcessPath -Name $OperationCompletedFlag -ItemType "file" | out-null
         }
     }
 
-    # Run parcomp test after fallback test
-    if ($ReturnValue.result) {
-        $DomainPSSession = Domain-PSSessionCreate `
-            -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
+    # Wait for parcomp process
+    WBase-WaitProcessToCompletedByID `
+        -ProcessID $ProcessIDArray `
+        -Remote $false | out-null
 
+    $VMNameList | ForEach-Object {
+        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
         Win-DebugTimestamp -output (
-            "{0}: Double check > Run parcomp test after LiveM test" -f $DomainPSSession.Name
+            "Host: The output log of LiveM process ---------------- {0}" -f $vmName
         )
-        $parcompTestResult = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param(
-                $RemoteInfo,
-                $CompressProvider,
-                $QatCompressionType
-            )
-            Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
-            $LocationInfo = $RemoteInfo
 
-            $parcompTestResult = WTW-ParcompBase `
-                -deCompressFlag $false `
-                -CompressProvider $CompressProvider `
-                -deCompressProvider $CompressProvider `
-                -QatCompressionType $QatCompressionType `
-                -BertaResultPath $LocationInfo.Domain.ResultPath
+        $ParcompProcessResult = WBase-CheckProcessOutput `
+            -ProcessOutputLog $ParcompProcessList[$_].Output `
+            -ProcessErrorLog $ParcompProcessList[$_].Error `
+            -ProcessResult $ParcompProcessList[$_].Result `
+            -Remote $false
 
-            return $parcompTestResult
-        } -ArgumentList $RemoteInfo,
-                        $CompressProvider,
-                        $QatCompressionType
+        if ($ReturnValue.result) {
+            $ReturnValue.result = $ParcompProcessResult.result
+            $ReturnValue.error = $ParcompProcessResult.error
+        }
 
-        if ($parcompTestResult.result) {
-            Win-DebugTimestamp -output (
-                "{0}: Double check > simple parcomp test is passed" -f $DomainPSSession.Name
-            )
+        if ($ParcompProcessResult.result) {
+            Win-DebugTimestamp -output ("Host: The LiveM(parcomp) test of {0} is passed" -f $vmName)
         } else {
-            Win-DebugTimestamp -output (
-                "{0}: Double check > simple parcomp test is failed" -f $DomainPSSession.Name
-            )
-            $ReturnValue.result = $parcompTestResult.result
-            $ReturnValue.error = $parcompTestResult.error
+            Win-DebugTimestamp -output ("Host: The LiveM(parcomp) test of {0} is failed" -f $vmName)
         }
     }
 
