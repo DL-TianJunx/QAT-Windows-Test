@@ -1,8 +1,6 @@
 **## How to run tests using PowerShell scripts:**
 
-1.
-
-Run tests using specific runner PowerShell script for specific algorithm:
+1. Run tests using specific runner PowerShell script for specific algorithm:
 
 | PowerShell script  | Binary from windows exe | Algorithm                 |
 | ------------------ | ----------------------- | ------------------------- |
