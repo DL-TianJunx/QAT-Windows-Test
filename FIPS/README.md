@@ -3,13 +3,13 @@
 1.
 
 Run tests using specific runner PowerShell script for specific algorithm:
-    
-| Python script     | Binary from build directory | Algorithm                 |
-| ----------------- | --------------------------- | ------------------------- |
-| runner_AES_CCM.py | fips_ccm_sample             | AES-CCM                   |
-| runner_AES_GCM.py | fips_gcm_sample             | AES-GCM                   |
-| runner_AES_XTS.py | fips_cipher_sample          | AES-XTS                   |
-| runner_AES.py     | fips_cipher_sample          | AES-CBC, AES-ECB, AES-CTR |
+
+| PowerShell script  | Binary from windows exe | Algorithm                 |
+| ------------------ | ----------------------- | ------------------------- |
+| runner_AES_CCM.ps1 | fips_windows.exe        | AES-CCM                   |
+| runner_AES_GCM.ps1 | fips_windows.exe        | AES-GCM                   |
+| runner_AES_XTS.ps1 | fips_windows.exe        | AES-XTS                   |
+| runner_AES.ps1     | fips_windows.exe        | AES-CBC, AES-ECB, AES-CTR |
 
 2. You need to run tests using following ".\runner_AES_xxx.ps1 <app_path> <in_file_with_vectors> <output_file_with_responses>" examples:
 
