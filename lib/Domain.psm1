@@ -1,36 +1,4 @@
 
-function DomainCopyDir
-{
-    Param(
-        [Parameter(Mandatory=$True)]
-        [string]$Destination,
-
-        [string]$Path = $null
-    )
-
-    $DomainPSSession = $LocationInfo.Domain.PSSession.Session
-    Invoke-Command -Session $DomainPSSession -ScriptBlock {
-        Param($Destination)
-        if (Test-Path -Path $Destination) {
-            Get-Item -Path $Destination | Remove-Item -Recurse
-        }
-
-        New-Item -Path $Destination -ItemType Directory | out-null
-    } -ArgumentList $Destination | out-null
-
-    if (-not [String]::IsNullOrEmpty($Path)) {
-        $CopyPath = "{0}\\*" -f $Path
-        Copy-Item `
-            -ToSession $DomainPSSession `
-            -Path $CopyPath `
-            -Destination $Destination `
-            -Recurse `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
-    }
-}
-
 function Domain-PSSessionCreate
 {
     Param(
@@ -43,7 +11,7 @@ function Domain-PSSessionCreate
         [bool]$IsWin = $true
     )
 
-    $RMNameReal = "{0}.QATWSTV_Domain.cc" -f $RMName
+    $RMNameReal = "{0}.QATWSTV.cc" -f $RMName
 
     $PSSessionStatus = Domain-PSSessionCheck -RMName $RMName -PSName $PSName
     if (-not $PSSessionStatus.result) {
@@ -55,10 +23,13 @@ function Domain-PSSessionCreate
 
         for ($i = 1; $i -lt 50; $i++) {
             try {
+                $PSSessionError = $null
                 New-PSSession `
                     -ComputerName $RMNameReal `
                     -Credential $DomainCredentials `
-                    -Name $PSName | out-null
+                    -Name $PSName `
+                    -ErrorAction SilentlyContinue `
+                    -ErrorVariable ProcessError | out-null
 
                 Start-Sleep -Seconds 5
 
@@ -112,7 +83,7 @@ function Domain-PSSessionCheck
         exist = $false
     }
 
-    $RMNameReal = "{0}.QATWSTV_Domain.cc" -f $RMName
+    $RMNameReal = "{0}.QATWSTV.cc" -f $RMName
 
     $PSSessionError = $null
     $PSSession = Get-PSSession `
@@ -153,11 +124,10 @@ function Domain-RemoteInfoInit
 
     $DomainPSSession = Domain-PSSessionCreate `
         -RMName $LocationInfo.Domain.TargetServer `
-        -PSName $LocationInfo.Domain.PSSession.Name
-    $DomainDriverPath = $LocationInfo.Domain.DriverPath
-    $DomainResultPath = $LocationInfo.Domain.ResultPath
+        -PSName $LocationInfo.Domain.PSSessionName
 
     Win-DebugTimestamp -output ("Init test ENV on target server....")
+    <#
     Invoke-Command -ScriptBlock {
         Enable-VMMigration
 
@@ -173,18 +143,42 @@ function Domain-RemoteInfoInit
             -UseAnyNetworkForMigration $true `
             -VirtualMachineMigrationAuthenticationType "Kerberos"
     } | out-null
-
+    #>
     Win-DebugTimestamp -output ("{0}: Init test script ...." -f $LocationInfo.Domain.TargetServer)
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
-        Import-Module "C:\\QatTestBerta\\lib\\BertaTools.psm1" -Force -DisableNameChecking
+        Import-Module "C:\QatTestBerta\lib\WinBase.psm1" -Force -DisableNameChecking
 
         CD C:\
         Berta-ENVInit | out-null
         Berta-CopyTestDir | out-null
     } | out-null
 
-    DomainCopyDir -Path $BuildPath -Destination $DomainDriverPath | out-null
-    DomainCopyDir -Destination $DomainResultPath | out-null
+    $DomainDriverPath = $LocationInfo.Domain.DriverPath
+    $DomainResultPath = $LocationInfo.Domain.ResultPath
+    WBase-ClearDir `
+        -Remote $true `
+        -Path $DomainDriverPath `
+        -Session $DomainPSSession | out-null
+    WBase-ClearDir `
+        -Remote $true `
+        -Path $DomainResultPath `
+        -Session $DomainPSSession | out-null
+    WBase-CopyDir `
+        -Remote $true `
+        -Path $BuildPath `
+        -Destination $DomainDriverPath `
+        -Session $DomainPSSession | out-null
+
+    WBase-ClearDir `
+        -Remote $false `
+        -Path $DomainDriverPath | out-null
+    WBase-ClearDir `
+        -Remote $false `
+        -Path $DomainResultPath | out-null
+    WBase-CopyDir `
+        -Remote $false `
+        -Path $BuildPath `
+        -Destination $DomainDriverPath | out-null
 
     Win-DebugTimestamp -output ("{0}: Init base info ...." -f $LocationInfo.Domain.TargetServer)
     $DomainRemoteInfo = Invoke-Command -Session $DomainPSSession -ScriptBlock {
@@ -246,7 +240,7 @@ function Domain-RemoteVMVFConfigInit
 
     $DomainPSSession = Domain-PSSessionCreate `
         -RMName $LocationInfo.Domain.TargetServer `
-        -PSName $LocationInfo.Domain.PSSession.Name
+        -PSName $LocationInfo.Domain.PSSessionName
 
     Domain-RemoteRemoveVMs | out-null
 
@@ -265,7 +259,7 @@ function Domain-RemoteRemoveVMs
 {
     $DomainPSSession = Domain-PSSessionCreate `
         -RMName $LocationInfo.Domain.TargetServer `
-        -PSName $LocationInfo.Domain.PSSession.Name
+        -PSName $LocationInfo.Domain.PSSessionName
 
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
         $VMList = Get-VM
@@ -275,6 +269,163 @@ function Domain-RemoteRemoveVMs
             }
         }
     } | out-null
+}
+
+function Domain-CheckVM
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [array]$VMNameList
+    )
+
+    $ReturnValue = [hashtable] @{
+        local = $false
+        remote = $false
+    }
+
+    $DomainPSSession = Domain-PSSessionCreate `
+        -RMName $LocationInfo.Domain.TargetServer `
+        -PSName $LocationInfo.Domain.PSSessionName
+
+    $ScriptBlock = {
+        Param($VMNameList)
+        $ReturnValue = $true
+
+        $VMNameList | ForEach-Object {
+            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $_
+            $GetVMError = $null
+            $VM = Get-VM `
+                -Name $VMName `
+                -ErrorAction SilentlyContinue `
+                -ErrorVariable GetVMError
+
+            if (-not [String]::IsNullOrEmpty($GetVMError)) {
+                $ReturnValue = $false
+            }
+        }
+
+        return $ReturnValue
+    }
+
+    $ReturnValue.local = Invoke-Command `
+        -ScriptBlock $ScriptBlock `
+        -ArgumentList $VMNameList
+
+    $ReturnValue.remote = Invoke-Command `
+        -Session $DomainPSSession `
+        -ScriptBlock $ScriptBlock `
+        -ArgumentList $VMNameList
+
+    return $ReturnValue
+}
+
+function Domain-MoveVM
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [array]$VMNameList,
+
+        [Parameter(Mandatory=$True)]
+        [bool]$isDomain
+    )
+
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+    }
+
+    $ScriptBlock = {
+        Param($VMNameList)
+        $ReturnValue = [hashtable] @{
+            result = $true
+            error = "no_error"
+        }
+
+        WBase-GetInfoFile | out-null
+
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSessionName
+
+        $RMName = "{0}.QATWSTV.cc" -f $LocationInfo.Domain.TargetServer
+        $VMNameList | ForEach-Object {
+            $PSSessionName = "Session_{0}" -f $_
+            $VMName = "{0}_{1}" -f $LocationInfo.Domain.ExecutingServer, $_
+            $NewVMName = "{0}_{1}" -f $LocationInfo.Domain.TargetServer, $_
+
+            HV-AssignableDeviceRemove -VMName $VMName | out-null
+
+            Win-DebugTimestamp -output ("{0}: Start to move vm ...." -f $PSSessionName)
+            $DestinationStoragePath = "{0}\\{1}_{2}" -f
+                $VHDAndTestFiles.ChildVMPath,
+                $LocationInfo.Domain.TargetServer,
+                $_
+            Move-VM `
+                -Name $VMName `
+                -DestinationHost $RMName `
+                -IncludeStorage `
+                -DestinationStoragePath $DestinationStoragePath | out-null
+
+            $MoveVMStatus = $true
+            $GetVMError = $null
+            $VM = Get-VM `
+                -Name $VMName `
+                -ErrorAction SilentlyContinue `
+                -ErrorVariable GetVMError
+            if ([String]::IsNullOrEmpty($GetVMError)) {
+                $MoveVMStatus = $false
+            } else {
+                $MoveVMStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
+                    Param($VMName)
+                    $MoveVMStatus = $true
+                    $GetVMError = $null
+                    $VM = Get-VM `
+                        -Name $VMName `
+                        -ErrorAction SilentlyContinue `
+                        -ErrorVariable GetVMError
+                    if (-not [String]::IsNullOrEmpty($GetVMError)) {
+                        $MoveVMStatus = $false
+                    }
+
+                    return $MoveVMStatus
+                } -ArgumentList $VMName
+            }
+
+            if ($MoveVMStatus) {
+                Invoke-Command -Session $DomainPSSession -ScriptBlock {
+                    Param($VMName, $NewVMName)
+                    Rename-VM -Name $VMName -NewName $NewVMName | out-null
+                } -ArgumentList $VMName, $NewVMName | out-null
+
+                Win-DebugTimestamp -output ("{0}: Move vm is successful" -f $PSSessionName)
+            } else {
+                Win-DebugTimestamp -output ("{0}: Move vm is unsuccessful" -f $PSSessionName)
+                if ($ReturnValue.result) {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "Move_VM_fail"
+                }
+            }
+        }
+
+        return $ReturnValue
+    }
+
+    if ($isDomain) {
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSessionName
+
+        $ReturnValue = Invoke-Command `
+            -Session $DomainPSSession `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $VMNameList
+    } else {
+        $ReturnValue = Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $VMNameList
+    }
+
+    return $ReturnValue
 }
 
 function Domain-ProcessParcomp
@@ -321,7 +472,7 @@ function Domain-ProcessParcomp
 
     $RemoteInfo = WBase-ReadHashtableFromJsonFile -InfoFilePath $RemoteInfoFilePath
     $RemoteInfo.WriteLogToConsole = $false
-    $RemoteInfo.WriteLogToFile = $true
+    $RemoteInfo.WriteLogToFile = $false
 
     $ParcompType = "Fallback"
     $runParcompType = "Process"
@@ -330,10 +481,11 @@ function Domain-ProcessParcomp
 
     $DomainPSSession = Domain-PSSessionCreate `
         -RMName $LocationInfo.Domain.TargetServer `
-        -PSName $LocationInfo.Domain.PSSession.Name
+        -PSName $LocationInfo.Domain.PSSessionName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
-    $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+    $VMName = "{0}_{1}" -f $LocationInfo.Domain.ExecutingServer, $VMNameSuffix
+    $NewVMName = "{0}_{1}" -f $LocationInfo.Domain.TargetServer, $VMNameSuffix
     $Session = HV-PSSessionCreate `
         -VMName $VMName `
         -PSName $PSSessionName `
@@ -353,8 +505,8 @@ function Domain-ProcessParcomp
         $ProcessCount += 1
         $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
         $CompressTestResult = WBase-Parcomp `
-            -Side "remote" `
-            -VMNameSuffix $VMNameSuffix `
+            -Remote $true `
+            -Session $Session `
             -deCompressFlag $false `
             -CompressProvider $CompressProvider `
             -deCompressProvider $deCompressProvider `
@@ -369,16 +521,14 @@ function Domain-ProcessParcomp
             -TestPath $CompressTestPath `
             -TestFileType $TestFileType `
             -TestFileSize $TestFileSize
-
-        Start-Sleep -Seconds 5
     }
 
     if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
         $ProcessCount += 1
         $deCompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
         $deCompressTestResult = WBase-Parcomp `
-            -Side "remote" `
-            -VMNameSuffix $VMNameSuffix `
+            -Remote $true `
+            -Session $Session `
             -deCompressFlag $true `
             -CompressProvider $CompressProvider `
             -deCompressProvider $deCompressProvider `
@@ -393,8 +543,6 @@ function Domain-ProcessParcomp
             -TestPath $deCompressTestPath `
             -TestFileType $TestFileType `
             -TestFileSize $TestFileSize
-
-        Start-Sleep -Seconds 5
     }
 
     # Check parcomp test process number
@@ -413,33 +561,24 @@ function Domain-ProcessParcomp
         -InfoFilePath $ParcompTestResultPath | out-null
 
     # wait operation completed
-    WTW-WaitOperationCompleted | out-null
-
-    # Rename vm on the target machine
-    if ($ReturnValue.result) {
-        Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param($VMName, $VMNameSuffix)
-            $NewVMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
-            Rename-VM -Name $VMName -NewName $NewVMName
-        } -ArgumentList $VMName, $VMNameSuffix | out-null
-    }
+    WTW-ChechFlagFile -FlagFileName $OperationCompletedFlag | out-null
 
     # reAdd VFs for VMs on the target machine
     if ($ReturnValue.result) {
         Win-DebugTimestamp -output ("{0}: reAdd VFs on the target machine" -f $DomainPSSession.Name)
         $DomainPSSession = Domain-PSSessionCreate `
             -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
+            -PSName $LocationInfo.Domain.PSSessionName
 
         $reAddStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param($RemoteInfo, $VMNameSuffix)
+            Param($RemoteInfo, $VMName, $VMNameSuffix)
             $ReturnValue = [hashtable] @{
                 result = $true
                 error = "no_error"
             }
 
-            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
             $global:LocationInfo = $RemoteInfo
+
             HV-AssignableDeviceAdd `
                 -VMName $VMName `
                 -PFVFArray $LocationInfo.VF.PFVFList[$VMNameSuffix] | out-null
@@ -453,7 +592,7 @@ function Domain-ProcessParcomp
             }
 
             return $ReturnValue
-        } -ArgumentList $RemoteInfo, $VMNameSuffix
+        } -ArgumentList $RemoteInfo, $NewVMName, $VMNameSuffix
 
         if ($reAddStatus.result) {
             Win-DebugTimestamp -output ("{0}: reAdd all VFs is passed" -f $DomainPSSession.Name)
@@ -475,17 +614,16 @@ function Domain-ProcessParcomp
         )
         $DomainPSSession = Domain-PSSessionCreate `
             -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
+            -PSName $LocationInfo.Domain.PSSessionName
 
         $CheckOutputLogStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param($RemoteInfo, $VMNameSuffix, $CompressType)
+            Param($RemoteInfo, $VMName, $VMNameSuffix, $CompressType)
             $ReturnValue = [hashtable] @{
                 result = $true
                 error = "no_error"
             }
 
             $PSSessionName = "Session_{0}" -f $VMNameSuffix
-            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
             $Session = HV-PSSessionCreate `
                 -VMName $VMName `
                 -PSName $PSSessionName `
@@ -495,7 +633,7 @@ function Domain-ProcessParcomp
             $global:LocationInfo = $RemoteInfo
 
             $WaitStatus = WBase-WaitProcessToCompletedByName `
-                -ProcessID "parcomp" `
+                -ProcessName "parcomp" `
                 -Remote $true `
                 -Session $Session
             if (-not $WaitStatus.result) {
@@ -503,8 +641,6 @@ function Domain-ProcessParcomp
                 $ReturnValue.error = $WaitStatus.error
                 return $ReturnValue
             }
-
-            Start-Sleep -Seconds 3
 
             if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
                 $CompressTestOutLogPath = "{0}\\{1}\\{2}" -f
@@ -551,7 +687,7 @@ function Domain-ProcessParcomp
             }
 
             return $ReturnValue
-        } -ArgumentList $RemoteInfo, $VMNameSuffix, $CompressType
+        } -ArgumentList $RemoteInfo, $NewVMName, $VMNameSuffix, $CompressType
 
         if ($CheckOutputLogStatus.result) {
             Win-DebugTimestamp -output (
@@ -577,7 +713,7 @@ function Domain-ProcessParcomp
         )
         $DomainPSSession = Domain-PSSessionCreate `
             -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
+            -PSName $LocationInfo.Domain.PSSessionName
 
         $ParcompArgs = [hashtable] @{
             CompressType = $CompressType
@@ -591,14 +727,13 @@ function Domain-ProcessParcomp
             TestFileSize = $TestFileSize
         }
         $CheckOutputFileStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param($RemoteInfo, $VMNameSuffix, $ParcompArgs)
+            Param($RemoteInfo, $VMName, $VMNameSuffix, $ParcompArgs)
             $ReturnValue = [hashtable] @{
                 result = $true
                 error = "no_error"
             }
 
             $PSSessionName = "Session_{0}" -f $VMNameSuffix
-            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
             $Session = HV-PSSessionCreate `
                 -VMName $VMName `
                 -PSName $PSSessionName `
@@ -607,14 +742,15 @@ function Domain-ProcessParcomp
 
             $global:LocationInfo = $RemoteInfo
 
-            if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+            if (($ParcompArgs.CompressType -eq "Compress") -or
+                ($ParcompArgs.CompressType -eq "All")) {
                 $CompressTestLogPath = "{0}\\{1}" -f
                     $STVWinPath,
                     $ParcompOpts.CompressPathName
                 $CheckMD5Result = WBase-CheckOutputFile `
                     -Remote $true `
                     -Session $Session `
-                    -deCompressFlag $ParcompArgs.CompressType `
+                    -deCompressFlag $false `
                     -CompressProvider $ParcompArgs.CompressProvider `
                     -deCompressProvider $ParcompArgs.deCompressProvider `
                     -QatCompressionType $ParcompArgs.QatCompressionType `
@@ -632,14 +768,15 @@ function Domain-ProcessParcomp
                 }
             }
 
-            if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+            if (($ParcompArgs.CompressType -eq "deCompress") -or
+                ($ParcompArgs.CompressType -eq "All")) {
                 $deCompressTestLogPath = "{0}\\{1}" -f
                     $STVWinPath,
                     $ParcompOpts.deCompressPathName
                 $CheckMD5Result = WBase-CheckOutputFile `
                     -Remote $true `
                     -Session $Session `
-                    -deCompressFlag $ParcompArgs.CompressType `
+                    -deCompressFlag $true `
                     -CompressProvider $ParcompArgs.CompressProvider `
                     -deCompressProvider $ParcompArgs.deCompressProvider `
                     -QatCompressionType $ParcompArgs.QatCompressionType `
@@ -658,7 +795,7 @@ function Domain-ProcessParcomp
             }
 
             return $ReturnValue
-        } -ArgumentList $RemoteInfo, $VMNameSuffix, $ParcompArgs
+        } -ArgumentList $RemoteInfo, $NewVMName, $VMNameSuffix, $ParcompArgs
 
         if ($CheckOutputFileStatus.result) {
             Win-DebugTimestamp -output (
@@ -684,17 +821,16 @@ function Domain-ProcessParcomp
         )
         $DomainPSSession = Domain-PSSessionCreate `
             -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSession.Name
+            -PSName $LocationInfo.Domain.PSSessionName
 
         $SimpleParcompStatus = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-            Param($RemoteInfo, $VMNameSuffix)
+            Param($RemoteInfo, $VMName, $VMNameSuffix)
             $ReturnValue = [hashtable] @{
                 result = $true
                 error = "no_error"
             }
 
             $PSSessionName = "Session_{0}" -f $VMNameSuffix
-            $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
             $Session = HV-PSSessionCreate `
                 -VMName $VMName `
                 -PSName $PSSessionName `
@@ -710,7 +846,7 @@ function Domain-ProcessParcomp
             }
 
             return $ReturnValue
-        } -ArgumentList $RemoteInfo, $VMNameSuffix
+        } -ArgumentList $RemoteInfo, $NewVMName, $VMNameSuffix
 
         if ($SimpleParcompStatus.result) {
             Win-DebugTimestamp -output (
@@ -769,26 +905,68 @@ function Domain-LiveMParcomp
     $VMNameList = $LocationInfo.VM.NameArray
     $ParcompProcessList = [hashtable] @{}
     $ProcessIDArray = [System.Array] @()
-    $RMName = "{0}.QATWSTV_Domain.cc" -f $LocationInfo.Domain.TargetServer
 
     if ([String]::IsNullOrEmpty($TestPath)) {
         $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
 
-    WBase-GenerateInfoFile | out-null
-    WBase-WriteHashtableToJsonFile `
-        -Info $RemoteInfo `
-        -InfoFilePath $RemoteInfoFilePath | out-null
+    # Check VM
+    $isDomain = $false
+
+    Domain-RemoteRemoveVMs | out-null
+
+    $CheckVMs = Domain-CheckVM -VMNameList $VMNameList
+    if ($CheckVMs.local) {
+        if ($CheckVMs.remote) {
+            Domain-RemoteRemoveVMs | out-null
+        }
+
+        $isDomain = $false
+    } else {
+        if ($CheckVMs.remote) {
+            $isDomain = $true
+        } else {
+            $VMVFOSConfig = "{0}vm_{1}vf_{2}" -f
+                $LocationInfo.VM.Number,
+                $LocationInfo.VF.Number,
+                $LocationInfo.VM.OS
+            WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $true | out-null
+
+            $isDomain = $false
+        }
+    }
 
     $DomainPSSession = Domain-PSSessionCreate `
         -RMName $LocationInfo.Domain.TargetServer `
-        -PSName $LocationInfo.Domain.PSSession.Name
+        -PSName $LocationInfo.Domain.PSSessionName
 
+    # Delete Operation Completed Flag file
     $OperationCompletedFlagPath = "{0}\\{1}" -f
         $LocalProcessPath,
         $OperationCompletedFlag
-    if (Test-Path -Path $OperationCompletedFlagPath) {
-        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force
+
+    if ($isDomain) {
+        Invoke-Command -Session $DomainPSSession -ScriptBlock {
+            Param($RemoteInfo, $OperationCompletedFlagPath)
+            $LocationInfo.TestCaseName = $RemoteInfo.TestCaseName
+            WBase-GenerateInfoFile | out-null
+            WBase-WriteHashtableToJsonFile `
+                -Info $RemoteInfo `
+                -InfoFilePath $RemoteInfoFilePath | out-null
+
+            if (Test-Path -Path $OperationCompletedFlagPath) {
+                Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force | out-null
+            }
+        } -ArgumentList $LocationInfo, $OperationCompletedFlagPath | out-null
+    } else {
+        WBase-GenerateInfoFile | out-null
+        WBase-WriteHashtableToJsonFile `
+            -Info $RemoteInfo `
+            -InfoFilePath $RemoteInfoFilePath | out-null
+
+        if (Test-Path -Path $OperationCompletedFlagPath) {
+            Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force | out-null
+        }
     }
 
     # Run parcomp test as process
@@ -811,7 +989,8 @@ function Domain-LiveMParcomp
         $ParcompProcess = WBase-StartProcess `
             -ProcessFilePath "pwsh" `
             -ProcessArgs $ParcompProcessArgs `
-            -keyWords $ParcompkeyWords
+            -keyWords $ParcompkeyWords `
+            -isDomain $isDomain
 
         $ParcompProcessList[$_] = [hashtable] @{
             Output = $ParcompProcess.Output
@@ -824,43 +1003,16 @@ function Domain-LiveMParcomp
 
     # Move all VMs
     if ($ReturnValue.result) {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 10
 
         $VMNameList | ForEach-Object {
-            $PSSessionName = "Session_{0}" -f $_
-            $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-            $Session = HV-PSSessionCreate `
-                -VMName $vmName `
-                -PSName $PSSessionName `
-                -IsWin $true `
-                -CheckFlag $false
+            $MoveVMStatus = Domain-MoveVM `
+                -VMNameList $_ `
+                -isDomain $isDomain
 
-            HV-AssignableDeviceRemove -VMName $vmName | out-null
-
-            Win-DebugTimestamp -output ("{0}: Start to move vm ...." -f $PSSessionName)
-            $DestinationStoragePath = "{0}\\{1}_{2}" -f
-                $VHDAndTestFiles.ChildVMPath,
-                $LocationInfo.Domain.TargetServer,
-                $_
-            Move-VM `
-                -Name $vmName `
-                -DestinationHost $RMName `
-                -IncludeStorage `
-                -DestinationStoragePath $DestinationStoragePath | out-null
-
-            $GetVMError = $null
-            $VM = Get-VM `
-                -Name $vmName `
-                -ErrorAction SilentlyContinue `
-                -ErrorVariable GetVMError
-            if ([String]::IsNullOrEmpty($GetVMError)) {
-                Win-DebugTimestamp -output ("{0}: Move vm is unsuccessful" -f $PSSessionName)
-                if ($ReturnValue.result) {
-                    $ReturnValue.result = $false
-                    $ReturnValue.error = "Move_VM_fail"
-                }
-            } else {
-                Win-DebugTimestamp -output ("{0}: Move vm is successful" -f $PSSessionName)
+            if (-not $MoveVMStatus.result) {
+                $ReturnValue.result = $MoveVMStatus.result
+                $ReturnValue.error = $MoveVMStatus.error
             }
         }
 
@@ -870,9 +1022,20 @@ function Domain-LiveMParcomp
     }
 
     # Wait for parcomp process
-    WBase-WaitProcessToCompletedByID `
-        -ProcessID $ProcessIDArray `
-        -Remote $false | out-null
+    if ($isDomain) {
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSessionName
+
+        WBase-WaitProcessToCompletedByID `
+            -ProcessID $ProcessIDArray `
+            -Remote $true `
+            -Session $DomainPSSession | out-null
+    } else {
+        WBase-WaitProcessToCompletedByID `
+            -ProcessID $ProcessIDArray `
+            -Remote $false | out-null
+    }
 
     $VMNameList | ForEach-Object {
         $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
@@ -896,6 +1059,12 @@ function Domain-LiveMParcomp
         } else {
             Win-DebugTimestamp -output ("Host: The LiveM(parcomp) test of {0} is failed" -f $vmName)
         }
+    }
+
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output ("Host: The LiveM(parcomp) test is passed")
+    } else {
+        Win-DebugTimestamp -output ("Host: The LiveM(parcomp) test is failed")
     }
 
     return $ReturnValue

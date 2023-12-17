@@ -96,7 +96,7 @@ try {
         [System.Array]$ParcompCompressionLevel = (1)
         [System.Array]$ParcompChunk = (256)
         [System.Array]$ParcompBlock = (4096)
-        [System.Array]$ParcompThread = (8)
+        [System.Array]$ParcompThread = (4)
         [System.Array]$ParcompIteration = (200)
         [System.Array]$TestFileNameArray.Type = ("calgary")
         [System.Array]$TestFileNameArray.Size = (200)

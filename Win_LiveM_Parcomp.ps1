@@ -93,10 +93,6 @@ try {
                            -QatDriverFullPath $PFVFDriverPath `
                            -BertaConfig $BertaConfig | out-null
 
-    $LocationInfo.Domain.PSSession.Session = Domain-PSSessionCreate `
-        -RMName $BertaConfig["TargetServer"] `
-        -PSName $LocationInfo.Domain.PSSession.Name
-
     $DomainRemoteInfo = Domain-RemoteInfoInit `
         -BertaConfig $BertaConfig `
         -BuildPath $LocalBuildPath
@@ -116,7 +112,7 @@ try {
         [System.Array]$ParcompCompressionLevel = (1, 4)
         [System.Array]$ParcompChunk = (32, 64)
         [System.Array]$ParcompBlock = (4096)
-        [System.Array]$ParcompThread = (8)
+        [System.Array]$ParcompThread = (2)
         [System.Array]$ParcompIteration = (200)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
@@ -193,6 +189,13 @@ try {
                 $VMVFOSConfig
 
             if (-not $CompareFlag) {
+                Win-DebugTimestamp -output ("Initialize test environment....")
+                WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $true | out-null
+
+                $DomainRemoteInfo = Domain-RemoteVMVFConfigInit `
+                    -RemoteInfo $DomainRemoteInfo `
+                    -VMVFOSConfig $VMVFOSConfig
+
                 Win-DebugTimestamp -output ("Start to run test case....")
                 Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
             }
@@ -241,14 +244,8 @@ try {
                         -ResultFile $CompareFile
                 } else {
                     Win-DebugTimestamp -output ("Start to run test case > {0}" -f $testName)
-                    Win-DebugTimestamp -output ("Initialize test environment....")
-                    WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $true | out-null
-
-                    $DomainRemoteInfo = Domain-RemoteVMVFConfigInit `
-                        -RemoteInfo $DomainRemoteInfo `
-                        -VMVFOSConfig $VMVFOSConfig
-
                     $LocationInfo.TestCaseName = $testName
+                    $DomainRemoteInfo.TestCaseName = $testName
 
                     $LiveMTestResult = Domain-LiveMParcomp `
                         -RemoteInfo $DomainRemoteInfo `
@@ -263,6 +260,10 @@ try {
                         -numIterations $TestCase.Iteration `
                         -TestFileType $TestCase.TestFileType `
                         -TestFileSize $TestCase.TestFileSize
+
+                    if (-not ([string]($LiveMTestResult.gettype()) -eq "hashtable")) {
+                        $LiveMTestResult = $LiveMTestResult[-1]
+                    }
 
                     if ($LiveMTestResult.result) {
                         $LiveMTestResult.result = $TestResultToBerta.Pass

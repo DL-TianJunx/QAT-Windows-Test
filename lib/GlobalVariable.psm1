@@ -13,7 +13,7 @@ $global:LocalLinuxPath = "{0}\\Linux" -f $STVWinPath
 $global:LocalProcessPath = "{0}\\Process" -f $STVWinPath
 $global:LocalInfoFilePath = "{0}\\LocationInfo.json" -f $LocalProcessPath
 $global:RemoteInfoFilePath = "{0}\\RemoteInfo.json" -f $LocalProcessPath
-$global:OperationCompletedFlag = "OperationCompletedFlag.txt"
+$global:OperationCompletedFlag = "OperationCompletedFlag"
 
 # About QAT driver
 $global:Certificate = [hashtable] @{
@@ -139,7 +139,7 @@ $global:RemoteUserConfig =  [hashtable] @{
     UserName = "administrator"
     Password = "root.1234"
     RootName = "root"
-    DomainUserName = "QATWSTV_Domain.cc\Administrator"
+    DomainUserName = "QATWSTV.cc\Administrator"
 }
 
 $global:WTWSecPassword = ConvertTo-SecureString `
@@ -386,10 +386,7 @@ $global:LocationInfo = [hashtable] @{
     Domain = [hashtable] @{
         ExecutingServer = $null
         TargetServer = $null
-        PSSession = [hashtable] @{
-            Name = "PSSession_Domain"
-            Session = $null
-        }
+        PSSessionName = "PSSession_Domain"
         DriverPath = "C:\Domain_QAT_driver"
         ResultPath = "C:\Domain_test_result"
     }

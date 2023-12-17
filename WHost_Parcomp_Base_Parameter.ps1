@@ -90,8 +90,8 @@ try {
         [System.Array]$ParcompProvider = ("qat", "qatgzip", "qatgzipext")
         [System.Array]$ParcompCompressType = ("Compress", "deCompress")
         [System.Array]$ParcompBlock = (4096)
-        [System.Array]$ParcompIteration = (100)
-        [System.Array]$ParcompThread = (8)
+        [System.Array]$ParcompIteration = (10)
+        [System.Array]$ParcompThread = (4)
     } else {
         $AnalyzeResult = WBase-AnalyzeTestCaseName -TestCaseName $runTestCase
         [System.Array]$ParcompProvider = $AnalyzeResult.Parcomp.Provider

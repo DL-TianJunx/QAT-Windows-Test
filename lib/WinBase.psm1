@@ -430,7 +430,7 @@ function WBase-STVWinPathInit
             $TestFileFullPath = "{0}\\{1}{2}.txt" -f $STVWinPath, $Type, $Size
             if (-not (Test-Path -Path $TestFileFullPath)) {
                 WBase-CreateTestFile `
-                    -Side "host" `
+                    -Remote $false `
                     -TestFileType $Type `
                     -TestFileSize $Size | out-null
             }
@@ -820,6 +820,84 @@ function WBase-FindFiles
     return $ReturnValue
 }
 
+function WBase-ClearDir
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [Parameter(Mandatory=$True)]
+        [string]$Path,
+
+        [object]$Session
+    )
+
+    if ($Remote) {
+        Invoke-Command -Session $Session -ScriptBlock {
+            Param($Path)
+            if (Test-Path -Path $Path) {
+                Get-Item -Path $Path | Remove-Item -Recurse -Force | out-null
+            }
+
+            New-Item -Path $Path -ItemType Directory | out-null
+        } -ArgumentList $Path | out-null
+    } else {
+        Invoke-Command -ScriptBlock {
+            Param($Path)
+            if (Test-Path -Path $Path) {
+                Get-Item -Path $Path | Remove-Item -Recurse -Force | out-null
+            }
+
+            New-Item -Path $Path -ItemType Directory | out-null
+        } -ArgumentList $Path | out-null
+    }
+}
+
+function WBase-CopyDir
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [Parameter(Mandatory=$True)]
+        [string]$Path,
+
+        [Parameter(Mandatory=$True)]
+        [string]$Destination,
+
+        [object]$Session
+    )
+
+    $CopyPath = "{0}\\*" -f $Path
+    if ($Remote) {
+        WBase-ClearDir `
+            -Remote $Remote `
+            -Path $Destination `
+            -Session $Session | out-null
+
+        Copy-Item `
+            -ToSession $Session `
+            -Path $CopyPath `
+            -Destination $Destination `
+            -Recurse `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    } else {
+        WBase-ClearDir `
+            -Remote $Remote `
+            -Path $Destination | out-null
+
+        Copy-Item `
+            -Path $CopyPath `
+            -Destination $Destination `
+            -Recurse `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+}
+
 # About HV mode
 function WBase-CheckDriverHVMode
 {
@@ -861,7 +939,7 @@ function WBase-CreateTestFile
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$Side,
+        [bool]$Remote,
 
         [object]$Session = $null,
 
@@ -870,20 +948,16 @@ function WBase-CreateTestFile
         [int]$TestFileSize = 200
     )
 
-    if ($Side -eq "host") {
-        $TestSourceFile = "{0}\\{1}{2}.txt" -f
-            $STVWinPath,
-            $TestFileType,
-            $TestFileSize
-        $LogKeyWord = "Host"
-    } elseif ($Side -eq "remote") {
-        $TestSourceFile = "{0}\\{1}{2}.txt" -f
-            $STVWinPath,
-            $TestFileType,
-            $TestFileSize
+    if ($Remote) {
         $LogKeyWord = $Session.Name
+    } else {
+        $LogKeyWord = "Host"
     }
 
+    $TestSourceFile = "{0}\\{1}{2}.txt" -f
+        $STVWinPath,
+        $TestFileType,
+        $TestFileSize
     $TestFileSizeBytes = $TestFileSize * 1024 * 1024
 
     if ($TestFileType -eq "high") {
@@ -893,13 +967,13 @@ function WBase-CreateTestFile
                 $TestFileSize,
                 $TestSourceFile
         )
-        if ($Side -eq "host") {
-            Invoke-Command -ScriptBlock {
+        if ($Remote) {
+            Invoke-Command -Session $Session -ScriptBlock {
                 Param($TestSourceFile, $TestFileSizeBytes)
                 fsutil file createnew $TestSourceFile $TestFileSizeBytes
             } -ArgumentList $TestSourceFile, $TestFileSizeBytes | out-null
-        } elseif ($Side -eq "remote") {
-            Invoke-Command -Session $Session -ScriptBlock {
+        } else {
+            Invoke-Command -ScriptBlock {
                 Param($TestSourceFile, $TestFileSizeBytes)
                 fsutil file createnew $TestSourceFile $TestFileSizeBytes
             } -ArgumentList $TestSourceFile, $TestFileSizeBytes | out-null
@@ -929,13 +1003,13 @@ function WBase-CreateTestFile
             }
         }
 
-        if ($Side -eq "host") {
-            Copy-Item -Path $calgaryTestFile -Destination $TestSourceFile
-        } elseif ($Side -eq "remote") {
+        if ($Remote) {
             Copy-Item `
                 -ToSession $Session `
                 -Path $calgaryTestFile `
                 -Destination $TestSourceFile
+        } else {
+            Copy-Item -Path $calgaryTestFile -Destination $TestSourceFile
         }
     } elseif ($TestFileType -eq "random") {
         Win-DebugTimestamp -output (
@@ -955,13 +1029,13 @@ function WBase-CreateTestFile
             }
         }
 
-        if ($Side -eq "host") {
-            Copy-Item -Path $randomTestFile -Destination $TestSourceFile
-        } elseif ($Side -eq "remote") {
+        if ($Remote) {
             Copy-Item `
                 -ToSession $Session `
                 -Path $randomTestFile `
                 -Destination $TestSourceFile
+        } else {
+            Copy-Item -Path $randomTestFile -Destination $TestSourceFile
         }
     } else {
         Win-DebugTimestamp -output (
@@ -1525,15 +1599,11 @@ function WBase-CheckDriverInstalled
         $LogKeyWord = "Host"
     }
 
-    if ($Remote) {
-        $app = Invoke-Command -Session $Session -ScriptBlock {
-            Get-CimInstance -ClassName win32_product | Where-Object {$_.Name -match "QuickAssist"}
-        }
-    } else {
-        $app = Get-CimInstance -ClassName win32_product | Where-Object {$_.Name -match "QuickAssist"}
-    }
+    $DriverInfo = WBaseGetDriverInfoFromRegedit `
+        -Remote $Remote `
+        -Session $Session
 
-    if ([String]::IsNullOrEmpty($app)) {
+    if ([String]::IsNullOrEmpty($DriverInfo.DisplayName)) {
         Win-DebugTimestamp -output ("{0}: The QAT driver has not installed" -f $LogKeyWord)
         $returnValue = $false
     } else {
@@ -1741,7 +1811,9 @@ function WBase-StartProcess
         [string]$ProcessArgs,
 
         [Parameter(Mandatory=$True)]
-        [string]$keyWords
+        [string]$keyWords,
+
+        [bool]$isDomain = $false
     )
 
     $ReturnValue = [hashtable] @{
@@ -1751,62 +1823,90 @@ function WBase-StartProcess
         Result = $null
     }
 
-    if ($ProcessFilePath -eq "pwsh") {
-        $ProcessCommandFilePath = "C:\Program Files\PowerShell\7\pwsh.exe"
-        if (-not [System.IO.File]::Exists($ProcessCommandFilePath)) {
-            $ProcessCommandFilePath = "powershell"
+    $ScriptBlock = {
+        Param($ProcessFilePath, $ProcessArgs, $keyWords)
+        $ReturnValue = [hashtable] @{
+            ID = $null
+            Output = $null
+            Error = $null
+            Result = $null
         }
 
-        $ProcessCommandArgs = "-Command {0}" -f $ProcessArgs
+        if ($ProcessFilePath -eq "pwsh") {
+            $ProcessCommandFilePath = "C:\Program Files\PowerShell\7\pwsh.exe"
+            if (-not [System.IO.File]::Exists($ProcessCommandFilePath)) {
+                $ProcessCommandFilePath = "powershell"
+            }
+
+            $ProcessCommandArgs = "-Command {0}" -f $ProcessArgs
+        } else {
+            $ProcessCommandFilePath = $ProcessFilePath
+            $ProcessCommandArgs = $ProcessArgs
+        }
+
+        $ProcessOutputLogPath = "{0}\\ProcessOutputLog_{1}.txt" -f $LocalProcessPath, $keyWords
+        $ReturnValue.Output = $ProcessOutputLogPath
+        if (Test-Path -Path $ProcessOutputLogPath) {
+            Remove-Item `
+                -Path $ProcessOutputLogPath `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+        }
+
+        $ProcessErrorLogPath = "{0}\\ProcessErrorLog_{1}.txt" -f $LocalProcessPath, $keyWords
+        $ReturnValue.Error = $ProcessErrorLogPath
+        if (Test-Path -Path $ProcessErrorLogPath) {
+            Remove-Item `
+                -Path $ProcessErrorLogPath `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+        }
+
+        $ProcessResultName = "ProcessResult_{0}.json" -f $keyWords
+        $ProcessResultPath = "{0}\\{1}" -f $LocalProcessPath, $ProcessResultName
+        $ReturnValue.Result = $ProcessResultPath
+        if (Test-Path -Path $ProcessResultPath) {
+            Remove-Item `
+                -Path $ProcessResultPath `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+        }
+        New-Item -Path $LocalProcessPath -Name $ProcessResultName -ItemType "file" | out-null
+
+        $ProcessInfo = Start-Process -FilePath $ProcessCommandFilePath `
+            -ArgumentList $ProcessCommandArgs `
+            -RedirectStandardOutput $ProcessOutputLogPath `
+            -RedirectStandardError $ProcessErrorLogPath `
+            -NoNewWindow `
+            -PassThru
+
+        $ReturnValue.ID = $ProcessInfo.ID
+
+        return $ReturnValue
+    }
+
+    if ($isDomain) {
+        $DomainPSSession = Domain-PSSessionCreate `
+            -RMName $LocationInfo.Domain.TargetServer `
+            -PSName $LocationInfo.Domain.PSSessionName
+
+        $ReturnValue = Invoke-Command `
+            -Session $DomainPSSession `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords
     } else {
-        $ProcessCommandFilePath = $ProcessFilePath
-        $ProcessCommandArgs = $ProcessArgs
+        $ReturnValue = Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords
     }
 
-    $ProcessOutputLogPath = "{0}\\ProcessOutputLog_{1}.txt" -f $LocalProcessPath, $keyWords
-    $ReturnValue.Output = $ProcessOutputLogPath
-    if (Test-Path -Path $ProcessOutputLogPath) {
-        Remove-Item `
-            -Path $ProcessOutputLogPath `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
-    }
-
-    $ProcessErrorLogPath = "{0}\\ProcessErrorLog_{1}.txt" -f $LocalProcessPath, $keyWords
-    $ReturnValue.Error = $ProcessErrorLogPath
-    if (Test-Path -Path $ProcessErrorLogPath) {
-        Remove-Item `
-            -Path $ProcessErrorLogPath `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
-    }
-
-    $ProcessResultName = "ProcessResult_{0}.json" -f $keyWords
-    $ProcessResultPath = "{0}\\{1}" -f $LocalProcessPath, $ProcessResultName
-    $ReturnValue.Result = $ProcessResultPath
-    if (Test-Path -Path $ProcessResultPath) {
-        Remove-Item `
-            -Path $ProcessResultPath `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
-    }
-    New-Item -Path $LocalProcessPath -Name $ProcessResultName -ItemType "file" | out-null
-
-    $ProcessInfo = Start-Process -FilePath $ProcessCommandFilePath `
-        -ArgumentList $ProcessCommandArgs `
-        -RedirectStandardOutput $ProcessOutputLogPath `
-        -RedirectStandardError $ProcessErrorLogPath `
-        -NoNewWindow `
-        -PassThru
-
-    Win-DebugTimestamp -output ("{0}: Start process that id is {1}" -f $keyWords, $ProcessInfo.ID)
-    Win-DebugTimestamp -output ("{0}: Process output file is {1}" -f $keyWords, $ProcessOutputLogPath)
-    Win-DebugTimestamp -output ("{0}: Process error file is {1}" -f $keyWords, $ProcessErrorLogPath)
-    Win-DebugTimestamp -output ("{0}: Process result file is {1}" -f $keyWords, $ProcessResultPath)
-    $ReturnValue.ID = $ProcessInfo.ID
+    Win-DebugTimestamp -output ("{0}: Start process that id is {1}" -f $keyWords, $ReturnValue.ID)
+    Win-DebugTimestamp -output ("{0}: Process output file is {1}" -f $keyWords, $ReturnValue.Output)
+    Win-DebugTimestamp -output ("{0}: Process error file is {1}" -f $keyWords, $ReturnValue.Error)
+    Win-DebugTimestamp -output ("{0}: Process result file is {1}" -f $keyWords, $ReturnValue.Result)
 
     return $ReturnValue
 }
@@ -2714,16 +2814,14 @@ function WBase-CheckOutputFile
         } else {
             ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
                 if ($Remote) {
-                    $Side = "remote"
                     $TestFilelocation = "VM"
                 } else {
-                    $Side = "host"
                     $TestFilelocation = "host"
                 }
 
                 $deCompressProcess = WBase-Parcomp `
-                    -Side $Side `
-                    -VMNameSuffix $VMNameSuffix `
+                    -Remote $Remote `
+                    -Session $Session `
                     -deCompressFlag $true `
                     -CompressProvider $CompressProvider `
                     -deCompressProvider $deCompressProvider `
@@ -2818,7 +2916,7 @@ function WBase-CheckQatDriver
         [string]$Type,
 
         [Parameter(Mandatory=$True)]
-        [string]$Side,
+        [bool]$Remote,
 
         [object]$Session = $null,
 
@@ -2833,26 +2931,27 @@ function WBase-CheckQatDriver
 
     $returnFlag = $true
     $LogKeyWord = $null
-    if ($Side -eq "host") {
-        $LogKeyWord = "Host"
-    } else {
+    if ($Remote) {
         $LogKeyWord = $Session.Name
+    } else {
+        $LogKeyWord = "Host"
     }
 
     if ($Type -eq "service") {
         Foreach ($QatDriverService in $QatDriverServices) {
             if ($Operation) {
                 Win-DebugTimestamp -output ("{0}: After QAT driver installed, double check service > {1}" -f $LogKeyWord, $QatDriverService)
-                if ($Side -eq "host") {
-                    $out = Invoke-Command -ScriptBlock {
-                                                         Param($QatDriverService)
-                                                         (get-service -name $QatDriverService).Status
-                                                         } -ArgumentList $QatDriverService
-                } elseif ($Side -eq "remote") {
+                if ($Remote) {
                     $out = Invoke-Command -Session $Session -ScriptBlock {
-                                                                           Param($QatDriverService)
-                                                                           (get-service -name $QatDriverService).Status
-                                                                           } -ArgumentList $QatDriverService
+                        Param($QatDriverService)
+                        (get-service -name $QatDriverService).Status
+                    } -ArgumentList $QatDriverService
+                } else {
+                    $out = Invoke-Command -ScriptBlock {
+                        Param($QatDriverService)
+                        (get-service -name $QatDriverService).Status
+                    } -ArgumentList $QatDriverService
+
                 }
 
                 if ([string]$out -eq "Running") {
@@ -2863,26 +2962,26 @@ function WBase-CheckQatDriver
                 }
             } else {
                 Win-DebugTimestamp -output ("{0}: After QAT driver uninstalled, double check service > {1}" -f $LogKeyWord, $QatDriverService)
-                if ($Side -eq "host") {
-                    $out = Invoke-Command -ScriptBlock {
-                                                         Param($QatDriverService)
-                                                         try {
-                                                             get-service -name $QatDriverService 2>&1
-                                                         } catch {
-                                                         } finally {
-                                                             get-service -name $QatDriverService 2>&1
-                                                         }
-                                                         } -ArgumentList $QatDriverService
-                } elseif ($Side -eq "remote") {
+                if ($Remote) {
                     $out = Invoke-Command -Session $Session -ScriptBlock {
-                                                                           Param($QatDriverService)
-                                                                           try {
-                                                                               get-service -name $QatDriverService 2>&1
-                                                                           } catch {
-                                                                           } finally {
-                                                                               get-service -name $QatDriverService 2>&1
-                                                                           }
-                                                                           } -ArgumentList $QatDriverService
+                        Param($QatDriverService)
+                        try {
+                            get-service -name $QatDriverService 2>&1
+                        } catch {
+                        } finally {
+                            get-service -name $QatDriverService 2>&1
+                        }
+                    } -ArgumentList $QatDriverService
+                } else {
+                    $out = Invoke-Command -ScriptBlock {
+                        Param($QatDriverService)
+                        try {
+                            get-service -name $QatDriverService 2>&1
+                        } catch {
+                        } finally {
+                            get-service -name $QatDriverService 2>&1
+                        }
+                    } -ArgumentList $QatDriverService
                 }
 
                 if ([string]$out -like "*Cannot find any service with*") {
@@ -2894,13 +2993,13 @@ function WBase-CheckQatDriver
             }
         }
     } elseif ($Type -eq "device") {
-        if ($Side -eq "host") {
-            $out = (Get-PnpDevice -friendlyname $LocationInfo.friendlyname).Status
-        } elseif ($Side -eq "remote") {
+        if ($Remote) {
             $out = Invoke-Command -Session $Session -ScriptBlock {
-                                                                   Param($LocationInfo)
-                                                                   (Get-PnpDevice -friendlyname $LocationInfo.friendlyname).Status
-                                                                   } -ArgumentList $LocationInfo
+                Param($LocationInfo)
+                (Get-PnpDevice -friendlyname $LocationInfo.friendlyname).Status
+            } -ArgumentList $LocationInfo
+        } else {
+            $out = (Get-PnpDevice -friendlyname $LocationInfo.friendlyname).Status
         }
 
         $deviceCount = 0
@@ -2912,48 +3011,48 @@ function WBase-CheckQatDriver
 
         if ($Operation) {
             Win-DebugTimestamp -output ("{0}: After QAT driver installed, double check device > {1}" -f $LogKeyWord, $deviceCount)
-            if ($Side -eq "host") {
-                if ($deviceCount -eq $LocationInfo.PF.Number) {
-                    Win-DebugTimestamp -output ("Host: The number of qat device is matched")
-                } else {
-                    Win-DebugTimestamp -output ("Host: The number of qat device is not matched")
-                    $returnFlag = $false
-                }
-            } elseif ($Side -eq "remote") {
+            if ($Remote) {
                 if ($deviceCount -eq $LocationInfo.VF.Number) {
                     Win-DebugTimestamp -output ("{0}: The number of qat device is matched" -f $Session.Name)
                 } else {
                     Win-DebugTimestamp -output ("{0}: The number of qat device is not matched" -f $Session.Name)
                     $returnFlag = $false
                 }
-            }
-        } else {
-            Win-DebugTimestamp -output ("{0}: After QAT driver uninstalled, double check device > {1}" -f $LogKeyWord, $deviceCount)
-            if ($Side -eq "host") {
-                if ($deviceCount -eq 0) {
+            } else {
+                if ($deviceCount -eq $LocationInfo.PF.Number) {
                     Win-DebugTimestamp -output ("Host: The number of qat device is matched")
                 } else {
                     Win-DebugTimestamp -output ("Host: The number of qat device is not matched")
                     $returnFlag = $false
                 }
-            } elseif ($Side -eq "remote") {
+            }
+        } else {
+            Win-DebugTimestamp -output ("{0}: After QAT driver uninstalled, double check device > {1}" -f $LogKeyWord, $deviceCount)
+            if ($Remote) {
                 if ($deviceCount -eq 0) {
                     Win-DebugTimestamp -output ("{0}: The number of qat device is matched" -f $Session.Name)
                 } else {
                     Win-DebugTimestamp -output ("{0}: The number of qat device is not matched" -f $Session.Name)
                     $returnFlag = $false
                 }
+            } else {
+                if ($deviceCount -eq 0) {
+                    Win-DebugTimestamp -output ("Host: The number of qat device is matched")
+                } else {
+                    Win-DebugTimestamp -output ("Host: The number of qat device is not matched")
+                    $returnFlag = $false
+                }
             }
         }
     } elseif ($Type -eq "library") {
         Foreach ($QatDriverLib in $QatDriverLibs) {
-            if ($Side -eq "host") {
-                $out = Test-Path -Path $QatDriverLib
-            } elseif ($Side -eq "remote") {
+            if ($Remote) {
                 $out = Invoke-Command -Session $Session -ScriptBlock {
-                                                                       Param($QatDriverLib)
-                                                                       Test-Path -Path $QatDriverLib
-                                                                       } -ArgumentList $QatDriverLib
+                    Param($QatDriverLib)
+                    Test-Path -Path $QatDriverLib
+                } -ArgumentList $QatDriverLib
+            } else {
+                $out = Test-Path -Path $QatDriverLib
             }
 
             if ($Operation) {
@@ -3682,9 +3781,9 @@ function WBase-Parcomp
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$Side,
+        [bool]$Remote,
 
-        [string]$VMNameSuffix,
+        [object]$Session = $null,
 
         [bool]$deCompressFlag = $false,
 
@@ -3732,27 +3831,13 @@ function WBase-Parcomp
         $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
     }
 
-    if ($Side -eq "host") {
-        $TestSourceFile = "{0}\\{1}{2}.txt" -f
-            $STVWinPath,
-            $TestFileType,
-            $TestFileSize
-        $LogKeyWord = "Host"
+    $TestSourceFile = "{0}\\{1}{2}.txt" -f
+        $STVWinPath,
+        $TestFileType,
+        $TestFileSize
 
-        if (Test-Path -Path $TestPath) {
-            Get-Item -Path $TestPath | Remove-Item -Recurse
-        }
-        New-Item -Path $TestPath -ItemType Directory
-    } elseif ($Side -eq "remote") {
-        $PSSessionName = ("Session_{0}" -f $VMNameSuffix)
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
-        $Session = Get-PSSession -name $PSSessionName
-
-        $TestSourceFile = "{0}\\{1}{2}.txt" -f
-            $STVWinPath,
-            $TestFileType,
-            $TestFileSize
-        $LogKeyWord = $PSSessionName
+    if ($Remote) {
+        $LogKeyWord = $Session.Name
         Invoke-Command -Session $Session -ScriptBlock {
             Param($TestPath)
             if (Test-Path -Path $TestPath) {
@@ -3760,6 +3845,14 @@ function WBase-Parcomp
             }
             New-Item -Path $TestPath -ItemType Directory
         } -ArgumentList $TestPath | out-null
+
+    } else {
+        $LogKeyWord = "Host"
+
+        if (Test-Path -Path $TestPath) {
+            Get-Item -Path $TestPath | Remove-Item -Recurse
+        }
+        New-Item -Path $TestPath -ItemType Directory
     }
 
     $ParcompExe = "{0}\\{1}" -f $ParcompOpts.ParcompPath, $ParcompOpts.ParcompExeName
@@ -3771,7 +3864,7 @@ function WBase-Parcomp
 
     # Get test source file
     if ($TestFilefullPath) {
-        if ($Side -eq "remote") {
+        if ($Remote) {
             if ($TestFilelocation -eq "Host") {
                 $TestFileName = Split-Path -Path $TestFilefullPath -Leaf
                 $TestSourceFile = "{0}\\{1}" -f $STVWinPath, $TestFileName
@@ -3800,22 +3893,22 @@ function WBase-Parcomp
                 $TestSourceFile
         )
     } else {
-        if ($Side -eq "host") {
-            if (!(Test-Path -Path $TestSourceFile)) {
-                WBase-CreateTestFile -Side $Side `
-                                     -TestFileType $TestFileType `
-                                     -TestFileSize $TestFileSize
-            }
-        } elseif ($Side -eq "remote") {
+        if ($Remote) {
             if (!(Invoke-Command -Session $Session -ScriptBlock {
                     Param($TestSourceFile)
                     Test-Path -Path $TestSourceFile
                 } -ArgumentList $TestSourceFile))
             {
-                WBase-CreateTestFile -Side $Side `
+                WBase-CreateTestFile -Remote $true `
                                      -TestFileType $TestFileType `
                                      -TestFileSize $TestFileSize `
                                      -Session $Session
+            }
+        } else {
+            if (!(Test-Path -Path $TestSourceFile)) {
+                WBase-CreateTestFile -Remote $false `
+                                     -TestFileType $TestFileType `
+                                     -TestFileSize $TestFileSize
             }
         }
     }
@@ -3834,27 +3927,7 @@ function WBase-Parcomp
             $deCompressProvider,
             $Chunk,
             $blockSize
-        if ($Side -eq "host") {
-            Invoke-Command -ScriptBlock {
-                Param($ParcompExe, $ParcompArges)
-                &$ParcompExe $ParcompArges.split()
-            } -ArgumentList $ParcompExe, $ParcompArges | out-null
-
-            $CompressOutFileArray = WBase-GetOutputFile `
-                -TestPath $TestPath `
-                -FileName $ParcompOpts.InputFileName `
-                -Remote $false
-
-            Invoke-Command -ScriptBlock {
-                Param($CompressOutFile, $TestParcompInFile)
-                if ($CompressOutFile.name -ne $TestParcompInFile) {
-                    $FullPath = "{0}\\{1}" -f $CompressOutFile.path, $CompressOutFile.name
-                    Rename-Item `
-                        -Path $FullPath `
-                        -NewName $TestParcompInFile | out-null
-                }
-            } -ArgumentList $CompressOutFileArray, $ParcompOpts.InputFileName | out-null
-        } elseif ($Side -eq "remote") {
+        if ($Remote) {
             Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
@@ -3874,15 +3947,35 @@ function WBase-Parcomp
                         -NewName $TestParcompInFile | out-null
                 }
             } -ArgumentList $CompressOutFileArray, $ParcompOpts.InputFileName | out-null
+        } else {
+            Invoke-Command -ScriptBlock {
+                Param($ParcompExe, $ParcompArges)
+                &$ParcompExe $ParcompArges.split()
+            } -ArgumentList $ParcompExe, $ParcompArges | out-null
+
+            $CompressOutFileArray = WBase-GetOutputFile `
+                -TestPath $TestPath `
+                -FileName $ParcompOpts.InputFileName `
+                -Remote $false
+
+            Invoke-Command -ScriptBlock {
+                Param($CompressOutFile, $TestParcompInFile)
+                if ($CompressOutFile.name -ne $TestParcompInFile) {
+                    $FullPath = "{0}\\{1}" -f $CompressOutFile.path, $CompressOutFile.name
+                    Rename-Item `
+                        -Path $FullPath `
+                        -NewName $TestParcompInFile | out-null
+                }
+            } -ArgumentList $CompressOutFileArray, $ParcompOpts.InputFileName | out-null
         }
     } else {
-        if ($Side -eq "host") {
-            Copy-Item -Path $TestSourceFile -Destination $TestParcompInFile
-        } elseif ($Side -eq "remote") {
+        if ($Remote) {
             Invoke-Command -Session $Session -ScriptBlock {
                 Param($TestSourceFile, $TestParcompInFile)
                 Copy-Item -Path $TestSourceFile -Destination $TestParcompInFile
             } -ArgumentList $TestSourceFile, $TestParcompInFile | out-null
+        } else {
+            Copy-Item -Path $TestSourceFile -Destination $TestParcompInFile
         }
     }
 
@@ -3944,13 +4037,13 @@ function WBase-Parcomp
         # After running this parcomp type, must be check:
         # -parcomp output log
         # -parcomp output file
-        if ($Side -eq "host") {
-            $ParcompPSOut = Invoke-Command -ScriptBlock {
+        if ($Remote) {
+            $ParcompPSOut = Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
             } -ArgumentList $ParcompExe, $ParcompArges
-        } elseif ($Side -eq "remote") {
-            $ParcompPSOut = Invoke-Command -Session $Session -ScriptBlock {
+        } else {
+            $ParcompPSOut = Invoke-Command -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
             } -ArgumentList $ParcompExe, $ParcompArges
@@ -4007,13 +4100,13 @@ function WBase-Parcomp
         # -parcomp output file
         # -job status
         # -job output log
-        if ($Side -eq "host") {
-            $ParcompJob = Invoke-Command -ScriptBlock {
+        if ($Remote) {
+            $ParcompJob = Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
             } -ArgumentList $ParcompExe, $ParcompArges -AsJob
-        } elseif ($Side -eq "remote") {
-            $ParcompJob = Invoke-Command -Session $Session -ScriptBlock {
+        } else {
+            $ParcompJob = Invoke-Command -ScriptBlock {
                 Param($ParcompExe, $ParcompArges)
                 &$ParcompExe $ParcompArges.split()
             } -ArgumentList $ParcompExe, $ParcompArges -AsJob
@@ -4026,8 +4119,8 @@ function WBase-Parcomp
         # -process status
         # -process error log
         # -process output log
-        if ($Side -eq "host") {
-            $ParcompProcess = Invoke-Command -ScriptBlock {
+        if ($Remote) {
+            $ParcompProcess = Invoke-Command -Session $Session -ScriptBlock {
                 Param($ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog)
                 $ParcompProcess = Start-Process -FilePath $ParcompExe `
                               -ArgumentList $ParcompArges `
@@ -4037,8 +4130,8 @@ function WBase-Parcomp
                               -PassThru
                 return $ParcompProcess
             } -ArgumentList $ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog
-        } elseif ($Side -eq "remote") {
-            $ParcompProcess = Invoke-Command -Session $Session -ScriptBlock {
+        } else {
+            $ParcompProcess = Invoke-Command -ScriptBlock {
                 Param($ParcompExe, $ParcompArges, $TestParcompOutLog, $TestParcompErrorLog)
                 $ParcompProcess = Start-Process -FilePath $ParcompExe `
                               -ArgumentList $ParcompArges `
@@ -4217,7 +4310,7 @@ function WBase-CNGTest
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$Side,
+        [bool]$Remote,
 
         [Parameter(Mandatory=$True)]
         [string]$algo,
@@ -4238,7 +4331,7 @@ function WBase-CNGTest
 
         [string]$TestPath = $null,
 
-        [string]$VMNameSuffix = $null
+        [object]$Session = $null
     )
 
     $ReturnValue = [hashtable] @{
@@ -4251,17 +4344,8 @@ function WBase-CNGTest
         $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
     }
 
-    if ($Side -eq "host") {
-        if (Test-Path -Path $TestPath) {
-            Get-Item -Path $TestPath | Remove-Item -Recurse
-        }
-        New-Item -Path $TestPath -ItemType Directory
-    } elseif ($Side -eq "remote") {
-        $PSSessionName = ("Session_{0}" -f $VMNameSuffix)
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
-
-        $Session = Get-PSSession -name $PSSessionName
-
+    if ($Remote) {
+        $PSSessionName = $Session.Name
         Invoke-Command -Session $Session -ScriptBlock {
             Param($TestPath)
             if (Test-Path -Path $TestPath) {
@@ -4269,6 +4353,11 @@ function WBase-CNGTest
             }
             New-Item -Path $TestPath -ItemType Directory
         } -ArgumentList $TestPath | out-null
+    } else {
+        if (Test-Path -Path $TestPath) {
+            Get-Item -Path $TestPath | Remove-Item -Recurse
+        }
+        New-Item -Path $TestPath -ItemType Directory
     }
 
     $CNGTestExe = "{0}\\{1}" -f $CNGTestOpts.CNGTestPath, $CNGTestOpts.CNGTestExeName
@@ -4328,8 +4417,8 @@ function WBase-CNGTest
     # -process status
     # -process error log
     # -process output log
-    if ($Side -eq "host") {
-        $CNGTestPSOut = Invoke-Command -ScriptBlock {
+    if ($Remote) {
+        $CNGTestPSOut = Invoke-Command -Session $Session -ScriptBlock {
             Param($CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog)
             $CNGTestProcess = Start-Process -FilePath $CNGTestExe `
                 -ArgumentList $CNGTestArges `
@@ -4339,8 +4428,8 @@ function WBase-CNGTest
                 -PassThru
             return $CNGTestProcess
         } -ArgumentList $CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog
-    } elseif ($Side -eq "remote") {
-        $CNGTestPSOut = Invoke-Command -Session $Session -ScriptBlock {
+    } else {
+        $CNGTestPSOut = Invoke-Command -ScriptBlock {
             Param($CNGTestExe, $CNGTestArges, $CNGTestOutLog, $CNGTestErrorLog)
             $CNGTestProcess = Start-Process -FilePath $CNGTestExe `
                 -ArgumentList $CNGTestArges `

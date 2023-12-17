@@ -90,7 +90,7 @@ try {
         [System.Array]$CNGTestProvider = ("qa")
         [System.Array]$CNGTestKeyLength = (4096)
         [System.Array]$CNGTestEcccurve = ("nistP256", "curve25519")
-        [System.Array]$CNGTestThread = (96)
+        [System.Array]$CNGTestThread = (48)
         [System.Array]$CNGTestIteration = (5000000)
         [System.Array]$AllTestType.Operation = ("heartbeat", "disable")
     } else {

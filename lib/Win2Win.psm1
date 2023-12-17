@@ -58,7 +58,11 @@ function WTW-ProcessVMInit
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$VMNameSuffix
+        [string]$VMNameSuffix,
+
+        [string]$VHDPath = $null,
+
+        [string]$VHDName = $null
     )
 
     WBase-GetInfoFile | out-null
@@ -67,7 +71,18 @@ function WTW-ProcessVMInit
     $LocationInfo.WriteLogToFile = $false
 
     # Create VMs
-    HV-CreateVM -VMNameSuffix $VMNameSuffix | out-null
+    if ([String]::IsNullOrEmpty($VHDPath)) {
+        $VHDPath = $VHDAndTestFiles.ParentsVMPath
+    }
+
+    if ([String]::IsNullOrEmpty($VHDName)) {
+        $VHDName = $LocationInfo.VM.ImageName
+    }
+
+    HV-CreateVM `
+        -VMNameSuffix $VMNameSuffix `
+        -VHDPath $VHDPath `
+        -VHDName $VHDName | out-null
 
     # Start VMs
     WTW-RestartVMs `
@@ -386,10 +401,11 @@ function WTW-ENVInit
         # Start process of InitVM
         $VMNameList | ForEach-Object {
             $InitVMProcessArgs = "WTW-ProcessVMInit -VMNameSuffix {0}" -f $_
+            $keyWords = "init_{0}" -f $_
             $InitVMProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
                 -ProcessArgs $InitVMProcessArgs `
-                -keyWords $_
+                -keyWords $keyWords
 
             $ProcessList[$_] = [hashtable] @{
                 ID = $InitVMProcess.ID
@@ -588,25 +604,39 @@ function WTW-EnableAndDisableQatDevice
     return $PNPCheckflag
 }
 
-function WTW-WaitOperationCompleted
+function WTW-ChechFlagFile
 {
-    Win-DebugTimestamp -output ("Wait operation to complete...")
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$FlagFileName
+    )
+
+    Win-DebugTimestamp -output ("Check flag file > {0}" -f $FlagFileName)
 
     $StopFlag = $true
+    $TimeoutFlag = $false
     $TimeInterval = 3
-    $OperationCompletedFlagPath = "{0}\\{1}" -f
-        $LocalProcessPath,
-        $OperationCompletedFlag
+    $WaitTime = 0
+    $TimeOut = 900
+    $FlagFilePath = "{0}\\{1}" -f $LocalProcessPath, $FlagFileName
 
     do {
         Start-Sleep -Seconds $TimeInterval
-        if (Test-Path -Path $OperationCompletedFlagPath) {
-            Win-DebugTimestamp -output ("The operation is completed")
+        $WaitTime += $TimeInterval
+        if ($WaitTime -ge $TimeOut) {
+            $TimeoutFlag = $true
             $StopFlag = $false
         } else {
-            $StopFlag = $true
+            if (Test-Path -Path $FlagFilePath) {
+                Win-DebugTimestamp -output ("Get flag file, stop wait")
+                $StopFlag = $false
+            }
         }
     } while ($StopFlag)
+
+    if ($TimeoutFlag) {
+        throw ("Can not get flag file, time out" )
+    }
 }
 
 # Test: installer check
@@ -752,7 +782,7 @@ function WTW-ProcessInstaller
                 -Operation $true `
                 -QatDriverServices $QatDriverServices `
                 -QatDriverLibs $QatDriverLibs `
-                -Side "remote"
+                -Remote $true
 
             if (-not $CheckStatus) {
                 $ReturnValue.install[$CheckType].result = $CheckStatus
@@ -767,7 +797,7 @@ function WTW-ProcessInstaller
             "{0}: After QAT driver installed, run simple parcomp test" -f $PSSessionName
         )
 
-        $ReturnValue.parcomp = WTW-SimpleParcomp -VMNameSuffix $VMNameSuffix
+        $ReturnValue.parcomp = WTW-SimpleParcomp -Session $Session
     }
 
     if ($cngtestFlag) {
@@ -775,7 +805,7 @@ function WTW-ProcessInstaller
             "{0}: After QAT driver installed, run simple CNGTest" -f $PSSessionName
         )
 
-        $ReturnValue.cngtest = WTW-SimpleCNGTest -VMNameSuffix $VMNameSuffix
+        $ReturnValue.cngtest = WTW-SimpleCNGTest -Session $Session
     }
 
     # Run static operation
@@ -797,7 +827,7 @@ function WTW-ProcessInstaller
             )
 
             if ($ReturnValue.parcomp.result) {
-                $ReturnValue.parcomp = WTW-SimpleParcomp -VMNameSuffix $VMNameSuffix
+                $ReturnValue.parcomp = WTW-SimpleParcomp -Session $Session
             }
         }
 
@@ -807,7 +837,7 @@ function WTW-ProcessInstaller
             )
 
             if ($ReturnValue.cngtest.result) {
-                $ReturnValue.cngtest = WTW-SimpleCNGTest -VMNameSuffix $VMNameSuffix
+                $ReturnValue.cngtest = WTW-SimpleCNGTest -Session $Session
             }
         }
 
@@ -845,7 +875,7 @@ function WTW-ProcessInstaller
                 -Operation $false `
                 -QatDriverServices $QatDriverServices `
                 -QatDriverLibs $QatDriverLibs `
-                -Side "remote"
+                -Remote $true
 
             if (-not $CheckStatus) {
                 $ReturnValue.uninstall[$CheckType].result = $CheckStatus
@@ -1134,8 +1164,8 @@ function WTW-ProcessParcomp
 
     # Run parcomp test
     $ParcompTestResult = WBase-Parcomp `
-        -Side "remote" `
-        -VMNameSuffix $VMNameSuffix `
+        -Remote $true `
+        -Session $Session `
         -deCompressFlag $deCompressFlag `
         -CompressProvider $CompressProvider `
         -deCompressProvider $deCompressProvider `
@@ -1155,7 +1185,7 @@ function WTW-ProcessParcomp
 
     # For Fallback test, wait operation completed
     if ($TestType -eq "Fallback") {
-        WTW-WaitOperationCompleted | out-null
+        WTW-ChechFlagFile -FlagFileName $OperationCompletedFlag | out-null
     }
 
     # Double check the output log
@@ -1230,7 +1260,7 @@ function WTW-ProcessParcomp
             "{0}: After parcomp fallback test, run simple parcomp test" -f $PSSessionName
         )
 
-        $ParcompTestResult = WTW-SimpleParcomp -VMNameSuffix $VMNameSuffix
+        $ParcompTestResult = WTW-SimpleParcomp -Session $Session
         if (-not $ParcompTestResult.result) {
             $ReturnValue.result = $ParcompTestResult.result
             $ReturnValue.error = $ParcompTestResult.error
@@ -1254,7 +1284,7 @@ function WTW-SimpleParcomp
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$VMNameSuffix
+        [object]$Session
     )
 
     $ReturnValue = [hashtable] @{
@@ -1264,8 +1294,8 @@ function WTW-SimpleParcomp
     }
 
     $ParcompTestResult = WBase-Parcomp `
-        -Side "remote" `
-        -VMNameSuffix $VMNameSuffix `
+        -Remote $true `
+        -Session $Session `
         -deCompressFlag $false `
         -CompressProvider "qat" `
         -deCompressProvider "qat" `
@@ -1427,7 +1457,7 @@ function WTW-Parcomp
 
     # Run operation
     if ($TestType -eq "Fallback") {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 10
 
         # Operation: heartbeat, disable, upgrade
         if ($TestOperationType -eq "heartbeat") {
@@ -1593,8 +1623,8 @@ function WTW-ProcessCNGTest
 
     # Run cngtest
     $CNGTestResult = WBase-CNGTest `
-        -Side "remote" `
-        -VMNameSuffix $VMNameSuffix `
+        -Remote $true `
+        -Session $Session `
         -algo $algo `
         -operation $operation `
         -provider $provider `
@@ -1607,7 +1637,7 @@ function WTW-ProcessCNGTest
 
     # For Fallback test, wait operation completed
     if ($TestType -eq "Fallback") {
-        WTW-WaitOperationCompleted | out-null
+        WTW-ChechFlagFile -FlagFileName $OperationCompletedFlag | out-null
     }
 
     # Wait parcomp test process
@@ -1646,7 +1676,7 @@ function WTW-ProcessCNGTest
             "{0}: After fallback cngtest, run simple cngtest" -f $PSSessionName
         )
 
-        $CNGTestResult = WTW-SimpleCNGTest -VMNameSuffix $VMNameSuffix
+        $CNGTestResult = WTW-SimpleCNGTest -Session $Session
         $ReturnValue.result = $CNGTestResult.result
         $ReturnValue.error = $CNGTestResult.error
     }
@@ -1668,7 +1698,7 @@ function WTW-SimpleCNGTest
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$VMNameSuffix
+        [object]$Session
     )
 
     $ReturnValue = [hashtable] @{
@@ -1678,8 +1708,8 @@ function WTW-SimpleCNGTest
     }
 
     $CNGTestResult = WBase-CNGTest `
-        -Side "remote" `
-        -VMNameSuffix $VMNameSuffix `
+        -Remote $true `
+        -Session $Session `
         -algo "rsa" `
         -operation "encrypt" `
         -provider "qa" `
@@ -1806,7 +1836,7 @@ function WTW-CNGTest
 
     # Operation: heartbeat, disable, upgrade
     if ($TestType -eq "Fallback") {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 10
 
         if ($TestOperationType -eq "heartbeat") {
             Win-DebugTimestamp -output ("Run 'heartbeat' operation on local host")
@@ -1939,22 +1969,24 @@ function WTW-Stress
                 -IsWin $true
 
             Win-DebugTimestamp -output ("{0}: Start to compress test" -f $PSSessionName)
-            $CompressTestResult = WBase-Parcomp -Side "remote" `
-                                                -VMNameSuffix $_ `
-                                                -deCompressFlag $false `
-                                                -ParcompType $ParcompType `
-                                                -runParcompType $runParcompType `
-                                                -TestPath $CompressTestPath
+            $CompressTestResult = WBase-Parcomp `
+                -Remote $true `
+                -Session $Session `
+                -deCompressFlag $false `
+                -ParcompType $ParcompType `
+                -runParcompType $runParcompType `
+                -TestPath $CompressTestPath
 
             Start-Sleep -Seconds 5
 
             Win-DebugTimestamp -output ("{0}: Start to decompress test" -f $PSSessionName)
-            $deCompressTestResult = WBase-Parcomp -Side "remote" `
-                                                  -VMNameSuffix $_ `
-                                                  -deCompressFlag $true `
-                                                  -ParcompType $ParcompType `
-                                                  -runParcompType $runParcompType `
-                                                  -TestPath $deCompressTestPath
+            $deCompressTestResult = WBase-Parcomp `
+                -Remote $true `
+                -Session $Session `
+                -deCompressFlag $true `
+                -ParcompType $ParcompType `
+                -runParcompType $runParcompType `
+                -TestPath $deCompressTestPath
 
             Start-Sleep -Seconds 5
         }
@@ -1971,8 +2003,8 @@ function WTW-Stress
                 -IsWin $true
 
             Win-DebugTimestamp -output ("{0}: Start to cng test" -f $PSSessionName)
-            $CNGTestResult = WBase-CNGTest -Side "remote" `
-                                           -VMNameSuffix $_ `
+            $CNGTestResult = WBase-CNGTest -Remote $true `
+                                           -Session $Session `
                                            -algo "rsa"
         }
     }

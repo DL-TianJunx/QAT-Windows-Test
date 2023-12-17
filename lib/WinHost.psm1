@@ -173,7 +173,7 @@ function WinHost-InstallerCheckBase
     # Run QAT Windows driver check: install
     Foreach ($CheckType in $CheckTypes) {
         Win-DebugTimestamp -output ("Host: After QAT driver installed, double check > {0}" -f $CheckType)
-        $CheckTestResult = WBase-CheckQatDriver -Side "host" `
+        $CheckTestResult = WBase-CheckQatDriver -Remote $false `
                                                 -Type $CheckType `
                                                 -Operation $true `
                                                 -QatDriverServices $QatDriverServices `
@@ -234,7 +234,7 @@ function WinHost-InstallerCheckBase
     # Run QAT Windows driver check: uninstall
     Foreach ($CheckType in $CheckTypes) {
         Win-DebugTimestamp -output ("Host: After QAT driver uninstalled, double check > {0}" -f $CheckType)
-        $CheckTestResult = WBase-CheckQatDriver -Side "host" `
+        $CheckTestResult = WBase-CheckQatDriver -Remote $false `
                                                 -Type $CheckType `
                                                 -Operation $false `
                                                 -QatDriverServices $QatDriverServices `
@@ -418,7 +418,7 @@ function WinHost-ParcompBase
         )
     }
 
-    $ParcompTestResult = WBase-Parcomp -Side "host" `
+    $ParcompTestResult = WBase-Parcomp -Remote $false `
                                        -deCompressFlag $deCompressFlag `
                                        -CompressProvider $CompressProvider `
                                        -deCompressProvider $deCompressProvider `
@@ -568,7 +568,7 @@ function WinHost-ParcompPerformance
         Win-DebugTimestamp -output ("Host: Start to {0} test (compress) with {1} provider!" -f $TestType, $CompressProvider)
     }
 
-    $ParcompTestResult = WBase-Parcomp -Side "host" `
+    $ParcompTestResult = WBase-Parcomp -Remote $false `
                                        -deCompressFlag $deCompressFlag `
                                        -CompressProvider $CompressProvider `
                                        -deCompressProvider $deCompressProvider `
@@ -743,7 +743,7 @@ function WinHost-ParcompSWfallback
     $ProcessCount = 0
     if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
         $ProcessCount += 1
-        $deCompressTestResult = WBase-Parcomp -Side "host" `
+        $deCompressTestResult = WBase-Parcomp -Remote $false `
                                               -deCompressFlag $true `
                                               -CompressProvider $CompressProvider `
                                               -deCompressProvider $deCompressProvider `
@@ -765,7 +765,7 @@ function WinHost-ParcompSWfallback
 
     if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
         $ProcessCount += 1
-        $CompressTestResult = WBase-Parcomp -Side "host" `
+        $CompressTestResult = WBase-Parcomp -Remote $false `
                                             -deCompressFlag $false `
                                             -CompressProvider $CompressProvider `
                                             -deCompressProvider $deCompressProvider `
@@ -994,7 +994,7 @@ function WinHost-CNGTestBase
                                                                                       $operation,
                                                                                       $provider)
 
-    $CNGTestResult = WBase-CNGTest -Side "host" `
+    $CNGTestResult = WBase-CNGTest -Remote $false `
                                    -algo $algo `
                                    -operation $operation `
                                    -provider $provider `
@@ -1106,7 +1106,7 @@ function WinHost-CNGTestPerformance
                                                                                       $operation,
                                                                                       $provider)
 
-    $CNGTestResult = WBase-CNGTest -Side "host" `
+    $CNGTestResult = WBase-CNGTest -Remote $false `
                                    -algo $algo `
                                    -operation $operation `
                                    -provider $provider `
@@ -1216,7 +1216,7 @@ function WinHost-CNGTestSWfallback
                                                                                        $algo,
                                                                                        $operation)
 
-    $CNGTestResult = WBase-CNGTest -Side "host" `
+    $CNGTestResult = WBase-CNGTest -Remote $false `
                                    -algo $algo `
                                    -operation $operation `
                                    -provider $provider `
@@ -1361,7 +1361,7 @@ function WinHost-Stress
     # Run test
     if ($RunParcomp) {
         Win-DebugTimestamp -output ("Host: Start to compress test")
-        $CompressTestResult = WBase-Parcomp -Side "host" `
+        $CompressTestResult = WBase-Parcomp -Remote $false `
                                             -deCompressFlag $false `
                                             -ParcompType $ParcompType `
                                             -runParcompType $runParcompType `
@@ -1370,7 +1370,7 @@ function WinHost-Stress
         Start-Sleep -Seconds 5
 
         Win-DebugTimestamp -output ("Host: Start to decompress test")
-        $deCompressTestResult = WBase-Parcomp -Side "host" `
+        $deCompressTestResult = WBase-Parcomp -Remote $false `
                                               -deCompressFlag $true `
                                               -ParcompType $ParcompType `
                                               -runParcompType $runParcompType `
@@ -1381,7 +1381,7 @@ function WinHost-Stress
 
     if ($RunCNGtest) {
         Win-DebugTimestamp -output ("Host: Start to cng test")
-        $CNGTestResult = WBase-CNGTest -Side "host" -algo "rsa"
+        $CNGTestResult = WBase-CNGTest -Remote $false -algo "rsa"
     }
 
     # Get test result

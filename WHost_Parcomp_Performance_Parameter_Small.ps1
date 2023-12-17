@@ -91,7 +91,7 @@ try {
         [System.Array]$ParcompCompressType = ("Compress", "deCompress")
         [System.Array]$ParcompCompressionLevel = (1)
         [System.Array]$ParcompBlock = (1024, 2048, 4096, 8192)
-        [System.Array]$ParcompThread = (8)
+        [System.Array]$ParcompThread = (4)
         [System.Array]$ParcompIteration = (1, 200)
         [System.Array]$ParcompCompressionType = ("dynamic")
     } else {

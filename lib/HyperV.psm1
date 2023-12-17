@@ -67,17 +67,22 @@ function HV-PSSessionCreate
 
         for ($i = 1; $i -lt 50; $i++) {
             try {
+                $PSSessionError = $null
                 if ($IsWin) {
                     New-PSSession `
                         -VMName $VMNameReal `
                         -Credential $WTWCredentials `
-                        -Name $PSName | out-null
+                        -Name $PSName `
+                        -ErrorAction SilentlyContinue `
+                        -ErrorVariable ProcessError | out-null
                 } else {
                     New-PSSession `
                         -HostName $VMNameReal `
                         -UserName $RemoteUserConfig.RootName `
                         -KeyFilePath $KeyFilePath `
-                        -Name $PSName | out-null
+                        -Name $PSName `
+                        -ErrorAction SilentlyContinue `
+                        -ErrorVariable ProcessError | out-null
                 }
 
                 Start-Sleep -Seconds 5
@@ -521,14 +526,28 @@ function HV-CreateVM
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$VMNameSuffix
+        [string]$VMNameSuffix,
+
+        [string]$VHDPath = $null,
+
+        [string]$VHDName = $null
     )
 
-    $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix)
-    $ParentsVM = "{0}\{1}.vhdx" -f
-        $VHDAndTestFiles.ParentsVMPath,
-        $LocationInfo.VM.ImageName
-    $ChildVM = "{0}\\{1}.vhdx" -f $VHDAndTestFiles.ChildVMPath, $VMName
+    if ([String]::IsNullOrEmpty($VHDPath)) {
+        $VHDPath = $VHDAndTestFiles.ParentsVMPath
+    }
+
+    if ([String]::IsNullOrEmpty($VHDName)) {
+        $VHDName = $LocationInfo.VM.ImageName
+    }
+
+    $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+    $ParentsVM = "{0}\{1}.vhdx" -f $VHDPath, $VHDName
+    $ChildVHDPath = "{0}\WTWChildVhds" -f $VHDPath
+    $ChildVM = "{0}\{1}.vhdx" -f $ChildVHDPath, $VMName
+    if (-not (Test-Path -Path $ChildVHDPath)) {
+        New-Item -Path $ChildVHDPath -ItemType Directory | out-null
+    }
 
     Win-DebugTimestamp -output ("Create new VM named {0}" -f $VMName)
 
@@ -774,12 +793,12 @@ function HV-AssignableDeviceAdd
     $PFVFArray | ForEach-Object {
         ForEach ($localPath in $LocationInfo.PF.PCI) {
             if ([int]($localPath.Id) -eq [int]($_.PF)) {
-                try {
-                    Win-DebugTimestamp -output (
-                        "Adding QAT VF with InstancePath {0} and VF# {1}" -f
-                            $localPath.Instance, $_.VF
-                    )
+                Win-DebugTimestamp -output (
+                    "Adding QAT VF with InstancePath {0} and VF# {1}" -f
+                        $localPath.Instance, $_.VF
+                )
 
+                try {
                     Add-VMAssignableDevice `
                         -VMName $VMName `
                         -LocationPath $localPath.Instance `
