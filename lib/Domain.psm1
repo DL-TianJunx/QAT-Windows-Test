@@ -46,7 +46,11 @@ function Domain-PSSessionCreate
 
         $Session = Get-PSSession -name $PSName
         Invoke-Command -Session $Session -ScriptBlock {
-            Import-Module "C:\\QatTestBerta\\lib\\WinBase.psm1" -Force -DisableNameChecking
+            $ModuleStatus = Get-Module -Name "WinBase"
+            if ([String]::IsNullOrEmpty($ModuleStatus)) {
+                Import-Module "C:\QatTestBerta\lib\WinBase.psm1" -Force -DisableNameChecking
+            }
+
             Set-Location "C:\QatTestBerta"
         }
     }
@@ -127,27 +131,25 @@ function Domain-RemoteInfoInit
         -PSName $LocationInfo.Domain.PSSessionName
 
     Win-DebugTimestamp -output ("Init test ENV on target server....")
-    <#
-    Invoke-Command -ScriptBlock {
+    $ScriptBlock = {
+        Param($ServerIP)
         Enable-VMMigration
 
-        Set-VMHost `
-            -UseAnyNetworkForMigration $true `
-            -VirtualMachineMigrationAuthenticationType "Kerberos"
-    } | out-null
-
-    Invoke-Command -Session $DomainPSSession -ScriptBlock {
-        Enable-VMMigration
+        $ServerIP = Get-NetIPAddress -AddressFamily IPv4 -IPAddress 10.67.*
+        Remove-VMMigrationNetwork *
+        Add-VMMigrationNetwork $ServerIP.IPAddress
 
         Set-VMHost `
-            -UseAnyNetworkForMigration $true `
-            -VirtualMachineMigrationAuthenticationType "Kerberos"
-    } | out-null
-    #>
+            -UseAnyNetworkForMigration $false `
+            -VirtualMachineMigrationAuthenticationType "Kerberos" `
+            -VirtualMachineMigrationPerformanceOption "Compression"
+    }
+
+    Invoke-Command -ScriptBlock $ScriptBlock | out-null
+    Invoke-Command -Session $DomainPSSession -ScriptBlock $ScriptBlock | out-null
+
     Win-DebugTimestamp -output ("{0}: Init test script ...." -f $LocationInfo.Domain.TargetServer)
     Invoke-Command -Session $DomainPSSession -ScriptBlock {
-        Import-Module "C:\QatTestBerta\lib\WinBase.psm1" -Force -DisableNameChecking
-
         CD C:\
         Berta-ENVInit | out-null
         Berta-CopyTestDir | out-null

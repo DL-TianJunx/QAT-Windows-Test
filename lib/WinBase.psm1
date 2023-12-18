@@ -3921,7 +3921,7 @@ function WBase-Parcomp
             $TestParcompInFile
     )
     if (($deCompressFlag) -and (!$TestFilefullPath)) {
-        $ParcompArges = "-i {0} -o {1} -p {2} -c {3} -k {4}" -f
+        $ParcompArges = "-i {0} -o {1} -p {2} -c {3} -k {4} -FB" -f
             $TestSourceFile,
             $TestParcompInFile,
             $deCompressProvider,
