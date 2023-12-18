@@ -608,12 +608,12 @@ function WTW-ChechFlagFile
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$FlagFileName
+        [array]$FlagFileNameArray
     )
 
-    Win-DebugTimestamp -output ("Check flag file > {0}" -f $FlagFileName)
+    Win-DebugTimestamp -output ("Check flag file...")
 
-    $StopFlag = $true
+    $RunCheckFlag = $false
     $TimeoutFlag = $false
     $TimeInterval = 3
     $WaitTime = 0
@@ -625,17 +625,20 @@ function WTW-ChechFlagFile
         $WaitTime += $TimeInterval
         if ($WaitTime -ge $TimeOut) {
             $TimeoutFlag = $true
-            $StopFlag = $false
+            $RunCheckFlag = $false
         } else {
-            if (Test-Path -Path $FlagFilePath) {
-                Win-DebugTimestamp -output ("Get flag file, stop wait")
-                $StopFlag = $false
+            $FlagFileName | ForEach-Object {
+                if (-not (Test-Path -Path $FlagFilePath)) {
+                    $RunCheckFlag = $true
+                }
             }
         }
-    } while ($StopFlag)
+    } while ($RunCheckFlag)
 
     if ($TimeoutFlag) {
         throw ("Can not get flag file, time out" )
+    } else {
+        Win-DebugTimestamp -output ("Get all flag file, stop wait")
     }
 }
 
@@ -723,7 +726,7 @@ function WTW-ProcessInstaller
         )
     }
 
-    $InstallerTestResultName = "ProcessResult_{0}.txt" -f $keyWords
+    $InstallerTestResultName = "ProcessResult_{0}.json" -f $keyWords
     $InstallerTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $InstallerTestResultName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
@@ -1185,7 +1188,18 @@ function WTW-ProcessParcomp
 
     # For Fallback test, wait operation completed
     if ($TestType -eq "Fallback") {
-        WTW-ChechFlagFile -FlagFileName $OperationCompletedFlag | out-null
+        $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $keyWords
+        $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+        if (-not (Test-Path -Path $StartOperationFlagPath)) {
+            New-Item `
+                -Path $LocalProcessPath `
+                -Name $StartOperationFlagName `
+                -ItemType "file" | out-null
+        }
+
+        $OperationCompletedFlagArray = @()
+        $OperationCompletedFlagArray += $OperationCompletedFlag
+        WTW-ChechFlagFile -FlagFileNameArray $OperationCompletedFlagArray | out-null
     }
 
     # Double check the output log
@@ -1358,6 +1372,7 @@ function WTW-Parcomp
     $CompressProcessList = [hashtable] @{}
     $deCompressProcessList = [hashtable] @{}
     $ProcessIDArray = [System.Array] @()
+    $StartOperationFlagArray = [System.Array] @()
     $TestSourceFile = "{0}\\{1}{2}.txt" -f $STVWinPath, $TestFileType, $TestFileSize
 
     if ([String]::IsNullOrEmpty($TestPath)) {
@@ -1366,6 +1381,7 @@ function WTW-Parcomp
 
     WBase-GenerateInfoFile | out-null
 
+    # Delete Operation Completed Flag file
     $OperationCompletedFlagPath = "{0}\\{1}" -f
         $LocalProcessPath,
         $OperationCompletedFlag
@@ -1414,6 +1430,16 @@ function WTW-Parcomp
             $CompresskeyWords = "Compress_{0}" -f $_
             $CompressProcessArgs = "{0} -keyWords {1}" -f $CompressProcessArgs, $CompresskeyWords
 
+            # Delete Start Operation Flag file
+            if ($TestType -eq "Fallback") {
+                $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $CompresskeyWords
+                $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+                if (Test-Path -Path $StartOperationFlagPath) {
+                    Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
+                }
+                $StartOperationFlagArray += $StartOperationFlagName
+            }
+
             $CompressProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
                 -ProcessArgs $CompressProcessArgs `
@@ -1440,6 +1466,16 @@ function WTW-Parcomp
             $deCompresskeyWords = "deCompress_{0}" -f $_
             $deCompressProcessArgs = "{0} -keyWords {1}" -f $deCompressProcessArgs, $deCompresskeyWords
 
+            # Delete Start Operation Flag file
+            if ($TestType -eq "Fallback") {
+                $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $deCompresskeyWords
+                $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+                if (Test-Path -Path $StartOperationFlagPath) {
+                    Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
+                }
+                $StartOperationFlagArray += $StartOperationFlagName
+            }
+
             $deCompressProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
                 -ProcessArgs $deCompressProcessArgs `
@@ -1457,7 +1493,7 @@ function WTW-Parcomp
 
     # Run operation
     if ($TestType -eq "Fallback") {
-        Start-Sleep -Seconds 10
+        WTW-ChechFlagFile -FlagFileNameArray $StartOperationFlagArray | out-null
 
         # Operation: heartbeat, disable, upgrade
         if ($TestOperationType -eq "heartbeat") {
@@ -1637,7 +1673,18 @@ function WTW-ProcessCNGTest
 
     # For Fallback test, wait operation completed
     if ($TestType -eq "Fallback") {
-        WTW-ChechFlagFile -FlagFileName $OperationCompletedFlag | out-null
+        $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $keyWords
+        $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+        if (-not (Test-Path -Path $StartOperationFlagPath)) {
+            New-Item `
+                -Path $LocalProcessPath `
+                -Name $StartOperationFlagName `
+                -ItemType "file" | out-null
+        }
+
+        $OperationCompletedFlagArray = @()
+        $OperationCompletedFlagArray += $OperationCompletedFlag
+        WTW-ChechFlagFile -FlagFileNameArray $OperationCompletedFlagArray | out-null
     }
 
     # Wait parcomp test process
@@ -1782,6 +1829,7 @@ function WTW-CNGTest
     $VMNameList = $LocationInfo.VM.NameArray
     $CNGTestProcessList = [hashtable] @{}
     $ProcessIDArray = [System.Array] @()
+    $StartOperationFlagArray = [System.Array] @()
 
     if ([String]::IsNullOrEmpty($TestPath)) {
         $TestPath = "{0}\\{1}" -f $STVWinPath, $CNGTestOpts.PathName
@@ -1789,6 +1837,7 @@ function WTW-CNGTest
 
     WBase-GenerateInfoFile | out-null
 
+    # Delete Operation Completed Flag file
     $OperationCompletedFlagPath = "{0}\\{1}" -f
         $LocalProcessPath,
         $OperationCompletedFlag
@@ -1820,6 +1869,16 @@ function WTW-CNGTest
         $CNGTestkeyWords = "{0}_{1}" -f $operation, $_
         $CNGTestProcessArgs = "{0} -keyWords {1}" -f $CNGTestProcessArgs, $CNGTestkeyWords
 
+        # Delete Start Operation Flag file
+        if ($TestType -eq "Fallback") {
+            $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $CNGTestkeyWords
+            $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+            if (Test-Path -Path $StartOperationFlagPath) {
+                Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
+            }
+            $StartOperationFlagArray += $StartOperationFlagName
+        }
+
         $CNGTestProcess = WBase-StartProcess `
             -ProcessFilePath "pwsh" `
             -ProcessArgs $CNGTestProcessArgs `
@@ -1836,7 +1895,7 @@ function WTW-CNGTest
 
     # Operation: heartbeat, disable, upgrade
     if ($TestType -eq "Fallback") {
-        Start-Sleep -Seconds 10
+        WTW-ChechFlagFile -FlagFileNameArray $StartOperationFlagArray | out-null
 
         if ($TestOperationType -eq "heartbeat") {
             Win-DebugTimestamp -output ("Run 'heartbeat' operation on local host")

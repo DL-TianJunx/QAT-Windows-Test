@@ -561,7 +561,18 @@ function Domain-ProcessParcomp
         -InfoFilePath $ParcompTestResultPath | out-null
 
     # wait operation completed
-    WTW-ChechFlagFile -FlagFileName $OperationCompletedFlag | out-null
+    $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $keyWords
+    $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+    if (-not (Test-Path -Path $StartOperationFlagPath)) {
+        New-Item `
+            -Path $LocalProcessPath `
+            -Name $StartOperationFlagName `
+            -ItemType "file" | out-null
+    }
+
+    $OperationCompletedFlagArray = @()
+    $OperationCompletedFlagArray += $OperationCompletedFlag
+    WTW-ChechFlagFile -FlagFileNameArray $OperationCompletedFlagArray | out-null
 
     # reAdd VFs for VMs on the target machine
     if ($ReturnValue.result) {
@@ -905,6 +916,7 @@ function Domain-LiveMParcomp
     $VMNameList = $LocationInfo.VM.NameArray
     $ParcompProcessList = [hashtable] @{}
     $ProcessIDArray = [System.Array] @()
+    $StartOperationFlagArray = [System.Array] @()
 
     if ([String]::IsNullOrEmpty($TestPath)) {
         $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
@@ -986,6 +998,14 @@ function Domain-LiveMParcomp
         $ParcompkeyWords = "{0}_{1}" -f $CompressType, $_
         $ParcompProcessArgs = "{0} -keyWords {1}" -f $ParcompProcessArgs, $ParcompkeyWords
 
+        # Delete Start Operation Flag file
+        $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $ParcompkeyWords
+        $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+        if (Test-Path -Path $StartOperationFlagPath) {
+            Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
+        }
+        $StartOperationFlagArray += $StartOperationFlagName
+
         $ParcompProcess = WBase-StartProcess `
             -ProcessFilePath "pwsh" `
             -ProcessArgs $ParcompProcessArgs `
@@ -1003,7 +1023,7 @@ function Domain-LiveMParcomp
 
     # Move all VMs
     if ($ReturnValue.result) {
-        Start-Sleep -Seconds 10
+        WTW-ChechFlagFile -FlagFileNameArray $StartOperationFlagArray | out-null
 
         $VMNameList | ForEach-Object {
             $MoveVMStatus = Domain-MoveVM `

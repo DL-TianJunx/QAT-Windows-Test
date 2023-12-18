@@ -13,6 +13,7 @@ $global:LocalLinuxPath = "{0}\\Linux" -f $STVWinPath
 $global:LocalProcessPath = "{0}\\Process" -f $STVWinPath
 $global:LocalInfoFilePath = "{0}\\LocationInfo.json" -f $LocalProcessPath
 $global:RemoteInfoFilePath = "{0}\\RemoteInfo.json" -f $LocalProcessPath
+$global:StartOperationFlag = "StartOperationFlag"
 $global:OperationCompletedFlag = "OperationCompletedFlag"
 
 # About QAT driver
