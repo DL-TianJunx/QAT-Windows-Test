@@ -613,7 +613,6 @@ function WTW-ChechFlagFile
 
     Win-DebugTimestamp -output ("Check flag file...")
 
-    $RunCheckFlag = $false
     $TimeoutFlag = $false
     $TimeInterval = 3
     $WaitTime = 0
@@ -623,6 +622,8 @@ function WTW-ChechFlagFile
     do {
         Start-Sleep -Seconds $TimeInterval
         $WaitTime += $TimeInterval
+
+        $RunCheckFlag = $false
         if ($WaitTime -ge $TimeOut) {
             $TimeoutFlag = $true
             $RunCheckFlag = $false
