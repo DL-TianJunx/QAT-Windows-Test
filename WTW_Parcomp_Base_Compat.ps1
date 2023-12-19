@@ -108,7 +108,7 @@ try {
         }
     )
 
-    $deCompressFlag = $false
+    $CompressType = "compress"
     $QatCompressionType = "dynamic"
     $CompressionLevel = 1
     $ChunkSize = 64
@@ -221,7 +221,7 @@ try {
                     $LocationInfo.TestCaseName = $testName
 
                     $ParcompBaseTestResult = WTW-Parcomp `
-                        -deCompressFlag $deCompressFlag `
+                        -CompressType $CompressType `
                         -CompressProvider $CompressProvider `
                         -deCompressProvider $deCompressProvider `
                         -QatCompressionType $QatCompressionType `

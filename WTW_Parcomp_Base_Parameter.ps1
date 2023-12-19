@@ -195,9 +195,6 @@ try {
             }
 
             Foreach ($TestCase in $TestCaseList) {
-                if ($TestCase.CompressType -eq "Compress") {$deCompressFlag = $false}
-                if ($TestCase.CompressType -eq "deCompress") {$deCompressFlag = $true}
-
                 $testName = "{0}_{1}_{2}_Thread{3}_Iteration{4}_Block{5}_Chunk{6}_{7}{8}" -f
                     $testNameHeader,
                     $TestCase.Provider,
@@ -236,7 +233,7 @@ try {
                     $LocationInfo.TestCaseName = $testName
 
                     $ParcompBaseTestResult = WTW-Parcomp `
-                        -deCompressFlag $deCompressFlag `
+                        -CompressType $TestCase.CompressType `
                         -CompressProvider $TestCase.Provider `
                         -deCompressProvider $TestCase.Provider `
                         -QatCompressionType $TestCase.CompressionType `

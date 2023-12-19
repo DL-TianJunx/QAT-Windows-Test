@@ -1335,7 +1335,8 @@ function WTW-Parcomp
         [Parameter(Mandatory=$True)]
         [string]$TestType,
 
-        [bool]$deCompressFlag = $false,
+        [Parameter(Mandatory=$True)]
+        [string]$CompressType,
 
         [string]$CompressProvider = "qat",
 
@@ -1359,9 +1360,7 @@ function WTW-Parcomp
 
         [int]$TestFileSize = 200,
 
-        [string]$TestOperationType = $null,
-
-        [string]$CompressType = $null
+        [string]$TestOperationType = $null
     )
 
     $ReturnValue = [hashtable] @{
@@ -1420,7 +1419,7 @@ function WTW-Parcomp
             $ParcompProcessArgs = "{0} -CheckOutputFileFlag 1" -f $ParcompProcessArgs
         }
 
-        if (($CompressType -eq "Compress") -or ($CompressType -eq "All") -or !$deCompressFlag) {
+        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
             if ($TestType -eq "Fallback") {
                 $CompressTestPathName = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
             } else {
@@ -1456,7 +1455,7 @@ function WTW-Parcomp
             $ProcessIDArray += $CompressProcess.ID
         }
 
-        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All") -or $deCompressFlag) {
+        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
             if ($TestType -eq "Fallback") {
                 $deCompressTestPathName = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
             } else {
@@ -1536,19 +1535,21 @@ function WTW-Parcomp
         }
     }
 
-    # Check output and error log for parcomp process
+    # Wait process completed
     WBase-WaitProcessToCompletedByID `
         -ProcessID $ProcessIDArray `
         -Remote $false | out-null
 
+    # Check output and error log for parcomp process
     $TotalOps = 0
     $VMNameList | ForEach-Object {
         $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-        Win-DebugTimestamp -output (
-            "Host: The output log of parcomp process ---------------- {0}" -f $vmName
-        )
 
-        if (($CompressType -eq "Compress") -or ($CompressType -eq "All") -or !$deCompressFlag) {
+        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+            Win-DebugTimestamp -output (
+                "{0}: The compress parcomp process ----------------" -f $vmName
+            )
+
             $CompressResult = WBase-CheckProcessOutput `
                 -ProcessOutputLog $CompressProcessList[$_].Output `
                 -ProcessErrorLog $CompressProcessList[$_].Error `
@@ -1562,13 +1563,21 @@ function WTW-Parcomp
             }
 
             if ($CompressResult.result) {
-                Win-DebugTimestamp -output ("Host: The compress parcomp test of {0} is true" -f $vmName)
+                Win-DebugTimestamp -output (
+                    "{0}: The compress parcomp process ---------------- true" -f $vmName
+                )
             } else {
-                Win-DebugTimestamp -output ("Host: The compress parcomp test of {0} is false" -f $vmName)
+                Win-DebugTimestamp -output (
+                    "{0}: The compress parcomp process ---------------- false" -f $vmName
+                )
             }
         }
 
-        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All") -or $deCompressFlag) {
+        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+            Win-DebugTimestamp -output (
+                "{0}: The decompress parcomp process ----------------" -f $vmName
+            )
+
             $deCompressResult = WBase-CheckProcessOutput `
                 -ProcessOutputLog $deCompressProcessList[$_].Output `
                 -ProcessErrorLog $deCompressProcessList[$_].Error `
@@ -1582,9 +1591,13 @@ function WTW-Parcomp
             }
 
             if ($deCompressResult.result) {
-                Win-DebugTimestamp -output ("Host: The decompress parcomp test of {0} is true" -f $vmName)
+                Win-DebugTimestamp -output (
+                    "{0}: The decompress parcomp process ---------------- true" -f $vmName
+                )
             } else {
-                Win-DebugTimestamp -output ("Host: The decompress parcomp test of {0} is false" -f $vmName)
+                Win-DebugTimestamp -output (
+                    "{0}: The decompress parcomp process ---------------- false" -f $vmName
+                )
             }
         }
     }
@@ -1937,16 +1950,17 @@ function WTW-CNGTest
         }
     }
 
-    # Check output and error log for cngtest process
+    # Wait process completed
     WBase-WaitProcessToCompletedByID `
         -ProcessID $ProcessIDArray `
         -Remote $false | out-null
 
+    # Check output and error log for cngtest process
     $TotalOps = 0
     $VMNameList | ForEach-Object {
         $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
         Win-DebugTimestamp -output (
-            "Host: The output log of CNGTest process ---------------- {0}" -f $vmName
+            "{0}: The CNGTest process ----------------" -f $vmName
         )
 
         $CNGTestResult = WBase-CheckProcessOutput `
@@ -1962,9 +1976,13 @@ function WTW-CNGTest
         }
 
         if ($CNGTestResult.result) {
-            Win-DebugTimestamp -output ("Host: The CNGTest of {0} is true" -f $vmName)
+            Win-DebugTimestamp -output (
+                "{0}: The CNGTest process ---------------- true" -f $vmName
+            )
         } else {
-            Win-DebugTimestamp -output ("Host: The CNGTest of {0} is false" -f $vmName)
+            Win-DebugTimestamp -output (
+                "{0}: The CNGTest process ---------------- false" -f $vmName
+            )
         }
     }
 
