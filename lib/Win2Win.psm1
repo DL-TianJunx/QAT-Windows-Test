@@ -1225,10 +1225,11 @@ function WTW-ProcessParcomp
                 -Session $Session `
                 -Remote $true `
                 -keyWords "Mbps"
+
+            $ReturnValue.testOps = $CheckOutput.testOps
             if (-not $CheckOutput.result) {
                 $ReturnValue.result = $CheckOutput.result
                 $ReturnValue.error = $CheckOutput.error
-                $ReturnValue.testOps = $CheckOutput.testOps
             }
         }
     } else {
