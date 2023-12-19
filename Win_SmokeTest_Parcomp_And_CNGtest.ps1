@@ -721,7 +721,7 @@ try {
                                         if ($SmokeTestTestType -eq "Base") {
                                             if ($SmokeTestModeType -eq "HVMode") {
                                                 $ParcompTestResult = WTW-Parcomp `
-                                                    -deCompressFlag $deCompressFlag `
+                                                    -CompressType $TestCase.CompressType `
                                                     -CompressProvider $TestCase.Provider `
                                                     -deCompressProvider $TestCase.Provider `
                                                     -QatCompressionType $TestCase.CompressionType `
@@ -774,7 +774,7 @@ try {
 
                                             if ($SmokeTestModeType -eq "HVMode") {
                                                 $ParcompTestResult = WTW-Parcomp `
-                                                    -deCompressFlag $deCompressFlag `
+                                                    -dCompressType $TestCase.CompressType `
                                                     -CompressProvider $TestCase.Provider `
                                                     -deCompressProvider $TestCase.Provider `
                                                     -QatCompressionType $TestCase.CompressionType `
