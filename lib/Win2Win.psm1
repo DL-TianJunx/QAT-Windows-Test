@@ -1388,7 +1388,7 @@ function WTW-Parcomp
         $LocalProcessPath,
         $OperationCompletedFlag
     if (Test-Path -Path $OperationCompletedFlagPath) {
-        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force
+        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force | out-null
     }
 
     # Run parcomp test as process
@@ -1844,7 +1844,7 @@ function WTW-CNGTest
         $LocalProcessPath,
         $OperationCompletedFlag
     if (Test-Path -Path $OperationCompletedFlagPath) {
-        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force
+        Get-Item -Path $OperationCompletedFlagPath | Remove-Item -Recurse -Force | out-null
     }
 
     # Run cngtest as process

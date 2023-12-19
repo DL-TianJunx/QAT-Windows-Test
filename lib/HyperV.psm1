@@ -549,6 +549,10 @@ function HV-CreateVM
         New-Item -Path $ChildVHDPath -ItemType Directory | out-null
     }
 
+    if (Test-Path -Path $ChildVM) {
+        Get-Item -Path $ChildVM | Remove-Item -Recurse -Force | out-null
+    }
+
     Win-DebugTimestamp -output ("Create new VM named {0}" -f $VMName)
 
     try {

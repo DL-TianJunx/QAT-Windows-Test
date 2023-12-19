@@ -491,6 +491,7 @@ try {
                                                 -ResultFile $CompareFile
                                         }
                                     } else {
+                                        $LocationInfo.TestCaseName = $testName
                                         if ($SmokeTestTestType -eq "Base") {
                                             if ($SmokeTestModeType -eq "HVMode") {
                                                 $CNGTestResult = WTW-CNGTest `
@@ -716,6 +717,7 @@ try {
                                                 -ResultFile $CompareFile
                                         }
                                     } else {
+                                        $LocationInfo.TestCaseName = $testName
                                         if ($SmokeTestTestType -eq "Base") {
                                             if ($SmokeTestModeType -eq "HVMode") {
                                                 $ParcompTestResult = WTW-Parcomp `
