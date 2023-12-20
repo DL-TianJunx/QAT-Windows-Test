@@ -60,9 +60,8 @@ function WTW-ProcessVMInit
         [Parameter(Mandatory=$True)]
         [string]$VMNameSuffix,
 
-        [string]$VHDPath = $null,
-
-        [string]$VHDName = $null
+        [Parameter(Mandatory=$True)]
+        [string]$VHDPath
     )
 
     WBase-GetInfoFile | out-null
@@ -71,18 +70,9 @@ function WTW-ProcessVMInit
     $LocationInfo.WriteLogToFile = $false
 
     # Create VMs
-    if ([String]::IsNullOrEmpty($VHDPath)) {
-        $VHDPath = $VHDAndTestFiles.ParentsVMPath
-    }
-
-    if ([String]::IsNullOrEmpty($VHDName)) {
-        $VHDName = $LocationInfo.VM.ImageName
-    }
-
     HV-CreateVM `
         -VMNameSuffix $VMNameSuffix `
-        -VHDPath $VHDPath `
-        -VHDName $VHDName | out-null
+        -VHDPath $VHDPath | out-null
 
     # Start VMs
     WTW-RestartVMs `
@@ -358,8 +348,14 @@ function WTW-ENVInit
         [Parameter(Mandatory=$True)]
         [string]$VMVFOSConfig,
 
+        [string]$VHDPath = $null,
+
         [bool]$InitVM = $true
     )
+
+    if ([String]::IsNullOrEmpty($VHDPath)) {
+        $VHDPath = $VHDAndTestFiles.ParentsVMPath
+    }
 
     HV-VMVFConfigInit -VMVFOSConfig $VMVFOSConfig | out-null
 
@@ -374,9 +370,7 @@ function WTW-ENVInit
         WTW-RemoveVMs | out-null
 
         # Check VHD file for VMs
-        $ParentsVM = "{0}\{1}.vhdx" -f
-            $VHDAndTestFiles.ParentsVMPath,
-            $LocationInfo.VM.ImageName
+        $ParentsVM = "{0}\{1}.vhdx" -f $VHDPath, $LocationInfo.VM.ImageName
         if (-not [System.IO.File]::Exists($ParentsVM)) {
             Win-DebugTimestamp -output (
                 "Copy Vhd file ({0}.vhdx) from remote {1}" -f
@@ -387,13 +381,10 @@ function WTW-ENVInit
             $BertaSource = "{0}\\{1}.vhdx" -f
                 $VHDAndTestFiles.SourceVMPath,
                 $LocationInfo.VM.ImageName
-            $BertaDestination = "{0}\\{1}.vhdx" -f
-                $VHDAndTestFiles.ParentsVMPath,
-                $LocationInfo.VM.ImageName
 
             Copy-Item `
                 -Path $BertaSource `
-                -Destination $BertaDestination `
+                -Destination $ParentsVM `
                 -Force `
                 -ErrorAction Stop | out-null
         }
@@ -401,6 +392,7 @@ function WTW-ENVInit
         # Start process of InitVM
         $VMNameList | ForEach-Object {
             $InitVMProcessArgs = "WTW-ProcessVMInit -VMNameSuffix {0}" -f $_
+            $InitVMProcessArgs = "{0} -VHDPath {1}" -f $InitVMProcessArgs, $VHDPath
             $keyWords = "init_{0}" -f $_
             $InitVMProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
@@ -424,7 +416,9 @@ function WTW-ENVInit
 
         $VMNameList | ForEach-Object {
             $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            Win-DebugTimestamp -output ("Host: The output log of init {0} ----------------" -f $vmName)
+            Win-DebugTimestamp -output (
+                "{0}: The init VM process ----------------" -f $vmName
+            )
 
             $ProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLog $ProcessList[$_].Output `
@@ -433,9 +427,13 @@ function WTW-ENVInit
                 -Remote $false
 
             if ($ProcessResult.Result) {
-                Win-DebugTimestamp -output ("Host: The init {0} is true" -f $vmName)
+                Win-DebugTimestamp -output (
+                    "{0}: The init VM process ---------------- true" -f $vmName
+                )
             } else {
-                Win-DebugTimestamp -output ("Host: The init {0} is false" -f $vmName)
+                Win-DebugTimestamp -output (
+                    "{0}: The init VM process ---------------- false" -f $vmName
+                )
             }
         }
 
@@ -614,10 +612,10 @@ function WTW-ChechFlagFile
     Win-DebugTimestamp -output ("Check flag file...")
 
     $TimeoutFlag = $false
+    $RunCheckFlag = $true
     $TimeInterval = 3
     $WaitTime = 0
     $TimeOut = 900
-    $FlagFilePath = "{0}\\{1}" -f $LocalProcessPath, $FlagFileName
 
     do {
         Start-Sleep -Seconds $TimeInterval
@@ -628,7 +626,8 @@ function WTW-ChechFlagFile
             $TimeoutFlag = $true
             $RunCheckFlag = $false
         } else {
-            $FlagFileName | ForEach-Object {
+            $FlagFileNameArray | ForEach-Object {
+                $FlagFilePath = "{0}\\{1}" -f $LocalProcessPath, $_
                 if (-not (Test-Path -Path $FlagFilePath)) {
                     $RunCheckFlag = $true
                 }

@@ -528,21 +528,12 @@ function HV-CreateVM
         [Parameter(Mandatory=$True)]
         [string]$VMNameSuffix,
 
-        [string]$VHDPath = $null,
-
-        [string]$VHDName = $null
+        [Parameter(Mandatory=$True)]
+        [string]$VHDPath
     )
 
-    if ([String]::IsNullOrEmpty($VHDPath)) {
-        $VHDPath = $VHDAndTestFiles.ParentsVMPath
-    }
-
-    if ([String]::IsNullOrEmpty($VHDName)) {
-        $VHDName = $LocationInfo.VM.ImageName
-    }
-
     $VMName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
-    $ParentsVM = "{0}\{1}.vhdx" -f $VHDPath, $VHDName
+    $ParentsVM = "{0}\{1}.vhdx" -f $VHDPath, $LocationInfo.VM.ImageName
     $ChildVHDPath = "{0}\WTWChildVhds" -f $VHDPath
     $ChildVM = "{0}\{1}.vhdx" -f $ChildVHDPath, $VMName
     if (-not (Test-Path -Path $ChildVHDPath)) {
@@ -613,14 +604,22 @@ function HV-RemoveVM
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$VMName
+        [string]$VMName,
+
+        [string]$VHDPath = $null
     )
 
-    if (Test-Path -Path $VHDAndTestFiles.ChildVMPath) {
+    if ([String]::IsNullOrEmpty($VHDPath)) {
+        $VHDPath = $VHDAndTestFiles.ParentsVMPath
+    }
+
+    $ChildVMPath = "{0}\\WTWChildVhds" -f $VHDPath
+
+    if (Test-Path -Path $ChildVMPath) {
         $GetVMError = $null
         $VM = Get-VM -Name $VMName -ErrorAction SilentlyContinue -ErrorVariable GetVMError
         if ([String]::IsNullOrEmpty($GetVMError)) {
-            if ($VM.HardDrives.Path -match $VHDAndTestFiles.ChildVMPath) {
+            if ($VM.HardDrives.Path -match $ChildVMPath) {
                 if ($VM.State -ne "off") {
                     HV-RestartVMHard `
                         -VMName $VMName `
@@ -633,17 +632,17 @@ function HV-RemoveVM
                 Win-DebugTimestamp -output ("Removing VM named {0}" -f $VM.Name)
                 Remove-VM -Name $VM.Name -Force -Confirm:$false | out-null
                 Remove-Item -Path $VM.HardDrives.Path -Force -Confirm:$false | out-null
-                $VMPath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $VMName
+                $VMPath = "{0}\\{1}" -f $ChildVMPath, $VMName
                 if (Test-Path -Path $VMPath) {
                     Remove-Item -Path $VMPath -Recurse -Force -Confirm:$false | out-null
                 }
             }
         } else {
-            $VMArray = Get-ChildItem -Path $VHDAndTestFiles.ChildVMPath
+            $VMArray = Get-ChildItem -Path $ChildVMPath
             if (-not ([String]::IsNullOrEmpty($VMArray))) {
                 $VMArray | ForEach-Object {
                     if ($_.Name -match $VMName) {
-                        $VMFullPath = "{0}\\{1}" -f $VHDAndTestFiles.ChildVMPath, $_.Name
+                        $VMFullPath = "{0}\\{1}" -f $ChildVMPath, $_.Name
                         Remove-Item -Path $VMFullPath -Recurse -Force -Confirm:$false | out-null
                     }
                 }

@@ -87,6 +87,7 @@ try {
     $LocationInfo.HVMode = $true
     $LocationInfo.IsWin = $true
     $LocationInfo.VM.IsWin = $true
+    $UseS2D = $false
     $PFVFDriverPath = WBase-GetDriverPath -BuildPath $LocalBuildPath
 
     WBase-LocationInfoInit -BertaResultPath $BertaResultPath `
@@ -95,7 +96,8 @@ try {
 
     $DomainRemoteInfo = Domain-RemoteInfoInit `
         -BertaConfig $BertaConfig `
-        -BuildPath $LocalBuildPath
+        -BuildPath $LocalBuildPath `
+        -UseS2D $UseS2D
 
     if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
         [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig `
@@ -190,11 +192,22 @@ try {
 
             if (-not $CompareFlag) {
                 Win-DebugTimestamp -output ("Initialize test environment....")
-                WTW-ENVInit -VMVFOSConfig $VMVFOSConfig -InitVM $true | out-null
+                if ($UseS2D) {
+                    WTW-ENVInit `
+                        -VMVFOSConfig $VMVFOSConfig `
+                        -VHDPath $LocationInfo.Domain.S2DStorage `
+                        -InitVM $true | out-null
+                } else {
+                    WTW-ENVInit `
+                        -VMVFOSConfig $VMVFOSConfig `
+                        -InitVM $true | out-null
+                }
+
 
                 $DomainRemoteInfo = Domain-RemoteVMVFConfigInit `
                     -RemoteInfo $DomainRemoteInfo `
-                    -VMVFOSConfig $VMVFOSConfig
+                    -VMVFOSConfig $VMVFOSConfig `
+                    -UseS2D $UseS2D
 
                 Win-DebugTimestamp -output ("Start to run test case....")
                 Win-DebugTimestamp -output ("-------------------------------------------------------------------------------------------------")
@@ -259,7 +272,8 @@ try {
                         -numThreads $TestCase.Thread `
                         -numIterations $TestCase.Iteration `
                         -TestFileType $TestCase.TestFileType `
-                        -TestFileSize $TestCase.TestFileSize
+                        -TestFileSize $TestCase.TestFileSize `
+                        -UseS2D $UseS2D
 
                     if (-not ([string]($LiveMTestResult.gettype()) -eq "hashtable")) {
                         $LiveMTestResult = $LiveMTestResult[-1]

@@ -1813,7 +1813,9 @@ function WBase-StartProcess
         [Parameter(Mandatory=$True)]
         [string]$keyWords,
 
-        [bool]$isDomain = $false
+        [bool]$Remote = $false,
+
+        [object]$Session = $null
     )
 
     $ReturnValue = [hashtable] @{
@@ -1888,13 +1890,9 @@ function WBase-StartProcess
         return $ReturnValue
     }
 
-    if ($isDomain) {
-        $DomainPSSession = Domain-PSSessionCreate `
-            -RMName $LocationInfo.Domain.TargetServer `
-            -PSName $LocationInfo.Domain.PSSessionName
-
+    if ($Remote) {
         $ReturnValue = Invoke-Command `
-            -Session $DomainPSSession `
+            -Session $Session `
             -ScriptBlock $ScriptBlock `
             -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords
     } else {
