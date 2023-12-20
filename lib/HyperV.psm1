@@ -337,6 +337,16 @@ function HV-VMVFConfigInit
         if ($VMMemory -gt 32) {$VMMemory = 32}
         $LocationInfo.VM.Memory = "{0}GiB" -f $VMMemory
 
+        # WorkAround: Start
+        #     ArcherCity76 and ArcherCity74 must been used only one External VMSwitch for domain network
+        if (($env:COMPUTERNAME -eq "AC74") -or
+            ($env:COMPUTERNAME -eq "ArcherCity74") -or
+            ($env:COMPUTERNAME -eq "AC76") -or
+            ($env:COMPUTERNAME -eq "ArcherCity76")) {
+            $VMSwitchType = "External"
+        }
+        # WorkAround: End
+
         $LocationInfo.VM.Switch = HV-VMSwitchCreate -VMSwitchType $VMSwitchType
 
         if ($LocationInfo.VM.OS -eq "windows2019") {$LocationInfo.VM.ImageName = "windows_server_2019_19624"}
