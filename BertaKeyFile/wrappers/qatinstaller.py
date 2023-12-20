@@ -19,7 +19,7 @@ class QatInstaller(BuildInstaller):
 
     # QatTestTools
     QATTEST_SRC = "T:\\QatTestBerta"
-    QATTEST_DST = "C:\\QatTestBerta"
+    QATTEST_DST = "C:\\QAT-Windows-Test"
     QATTEST_REBOOTFILE = "C:\\berta\\var\\reboot.txt"
 
     # MS Shared Repo Special build
@@ -262,15 +262,25 @@ class QatInstaller(BuildInstaller):
 
     def copy_test_dir(self):
         log.info('Copy qat test script from repo')
-        CopyFlag = False
-        command = r"""Berta-CopyTestDir"""
+        command = r"""Test-Path -Path {0}""".format(QATTEST_DST)
         out, rc = self.invoke_pscommand(self.pspath, command, 500, shell=False)
-        out = self.convert_ps_return(out, 'bool')
-        if rc == 0:
-            if out:
-                log.info('Copy qat test script is completed')
+        if out:
+            command = r"""Berta-CopyTestDir"""
+            out, rc = self.invoke_pscommand(self.pspath, command, 500, shell=False)
+            out = self.convert_ps_return(out, 'bool')
+            if rc == 0:
+                if out:
+                    log.info('Git qat test script is completed')
+                else:
+                    log.info('Git qat test script is failed')
+        else:
+            command = r"""git clone https://github.com/cuiyanx/QAT-Windows-Test.git {0}""".format(QATTEST_DST)
+            out, rc = self.invoke_pscommand(self.pspath, command, 500, shell=False)
+            out = self.convert_ps_return(out, 'bool')
+            if rc == 0:
+                log.info('Git qat test script is completed')
             else:
-                log.info('Copy qat test script is failed')
+                log.info('Git qat test script is failed')
 
         return
 

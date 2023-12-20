@@ -80,7 +80,7 @@ class WinQat(wrapper.ExtendedTestTool):
         #  We can use self.task['repo_results_dir'] but you may just end up rerunning the task.
         self.default_result_path = join(self.task.get_dir(), 'results-log.txt')
 
-        self.test_path_root = "C:\\QatTestBerta"
+        self.test_path_root = "C:\\QAT-Windows-Test"
         self.result_file_name = "result.log"
 
         # Get the scenario args in list form

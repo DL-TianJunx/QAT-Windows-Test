@@ -11,7 +11,7 @@ function Domain-PSSessionCreate
         [bool]$IsWin = $true
     )
 
-    $RMNameReal = "{0}.QATWSTV.cc" -f $RMName
+    $RMNameReal = "{0}.{1}.cc" -f $RMName, $DomainName
 
     $PSSessionStatus = Domain-PSSessionCheck -RMName $RMName -PSName $PSName
     if (-not $PSSessionStatus.result) {
@@ -87,7 +87,7 @@ function Domain-PSSessionCheck
         exist = $false
     }
 
-    $RMNameReal = "{0}.QATWSTV.cc" -f $RMName
+    $RMNameReal = "{0}.{1}.cc" -f $RMName, $DomainName
 
     $PSSessionError = $null
     $PSSession = Get-PSSession `
@@ -449,7 +449,7 @@ function Domain-MoveVM
             -RMName $LocationInfo.Domain.TargetServer `
             -PSName $LocationInfo.Domain.PSSessionName
 
-        $RMName = "{0}.QATWSTV.cc" -f $LocationInfo.Domain.TargetServer
+        $RMName = "{0}.{1}.cc" -f $LocationInfo.Domain.TargetServer, $DomainName
         $VMNameList | ForEach-Object {
             $PSSessionName = "Session_{0}" -f $_
             $VMName = "{0}_{1}" -f $LocationInfo.Domain.ExecutingServer, $_

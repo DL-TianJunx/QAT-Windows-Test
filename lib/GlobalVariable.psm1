@@ -15,6 +15,7 @@ $global:LocalInfoFilePath = "{0}\\LocationInfo.json" -f $LocalProcessPath
 $global:RemoteInfoFilePath = "{0}\\RemoteInfo.json" -f $LocalProcessPath
 $global:StartOperationFlag = "StartOperationFlag"
 $global:OperationCompletedFlag = "OperationCompletedFlag"
+$global:DomainName = "QATWSTV"
 
 # About QAT driver
 $global:Certificate = [hashtable] @{
@@ -140,7 +141,7 @@ $global:RemoteUserConfig =  [hashtable] @{
     UserName = "administrator"
     Password = "root.1234"
     RootName = "root"
-    DomainUserName = "QATWSTV.cc\Administrator"
+    DomainUserName = "{0}.cc\Administrator" -f $DomainName
 }
 
 $global:WTWSecPassword = ConvertTo-SecureString `
@@ -287,10 +288,14 @@ $global:BertaENVInit = [hashtable] @{
     }
     PSProFile = [hashtable] @{
         FileName = "Microsoft.PowerShell_profile.ps1"
-        SourcePath = "{0}\\utils" -f $QATTESTPATH
+        SourcePath = "\\10.67.115.211\mountBertaCTL\tools"
         DestinationPath = [System.Array] @(
-            "C:\\Users\\Administrator\\Documents\\PowerShell",
-            "C:\\Users\\Administrator\\Documents\\WindowsPowerShell"
+            "C:\\Users\\Administrator\\Documents",
+            "C:\\Users\\Administrator.$DomainName\\Documents"
+        )
+        DestinationChildPath = [System.Array] @(
+            "PowerShell",
+            "WindowsPowerShell"
         )
     }
     LinuxShell = [hashtable] @{
