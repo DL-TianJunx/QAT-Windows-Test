@@ -303,7 +303,9 @@ function HV-VMVFConfigInit
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$VMVFOSConfig
+        [string]$VMVFOSConfig,
+
+        [string]$VMSwitchType = "Internal"
     )
 
     $LocationInfo.VM.Number = $null
@@ -335,7 +337,7 @@ function HV-VMVFConfigInit
         if ($VMMemory -gt 32) {$VMMemory = 32}
         $LocationInfo.VM.Memory = "{0}GiB" -f $VMMemory
 
-        $LocationInfo.VM.Switch = HV-VMSwitchCreate -VMSwitchType "Internal"
+        $LocationInfo.VM.Switch = HV-VMSwitchCreate -VMSwitchType $VMSwitchType
 
         if ($LocationInfo.VM.OS -eq "windows2019") {$LocationInfo.VM.ImageName = "windows_server_2019_19624"}
         if ($LocationInfo.VM.OS -eq "windows2022") {$LocationInfo.VM.ImageName = "windows_server_2022_20348"}

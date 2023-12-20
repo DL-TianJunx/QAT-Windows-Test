@@ -284,11 +284,13 @@ function Domain-RemoteVMVFConfigInit
 
     Win-DebugTimestamp -output ("{0}: Init config info for VMVFOS...." -f $LocationInfo.Domain.TargetServer)
     $ReturnValue = Invoke-Command -Session $DomainPSSession -ScriptBlock {
-        Param($RemoteInfo, $VMVFOSConfig)
+        Param($RemoteInfo, $VMVFOSConfig, $VMSwitchType)
         $LocationInfo = $RemoteInfo
-        HV-VMVFConfigInit -VMVFOSConfig $VMVFOSConfig | out-null
+        HV-VMVFConfigInit `
+            -VMVFOSConfig $VMVFOSConfig `
+            -VMSwitchType $VMSwitchType | out-null
         return $LocationInfo
-    } -ArgumentList $RemoteInfo, $VMVFOSConfig
+    } -ArgumentList $RemoteInfo, $VMVFOSConfig, "External"
 
     return $ReturnValue
 }
@@ -1116,10 +1118,12 @@ function Domain-LiveMParcomp
                 WTW-ENVInit `
                     -VMVFOSConfig $VMVFOSConfig `
                     -VHDPath $LocationInfo.Domain.S2DStorage `
+                    -VMSwitchType "External" `
                     -InitVM $true | out-null
             } else {
                 WTW-ENVInit `
                     -VMVFOSConfig $VMVFOSConfig `
+                    -VMSwitchType "External" `
                     -InitVM $true | out-null
             }
 

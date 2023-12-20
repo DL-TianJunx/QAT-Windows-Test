@@ -350,14 +350,18 @@ function WTW-ENVInit
 
         [string]$VHDPath = $null,
 
-        [bool]$InitVM = $true
+        [bool]$InitVM = $true,
+
+        [string]$VMSwitchType = "Internal"
     )
 
     if ([String]::IsNullOrEmpty($VHDPath)) {
         $VHDPath = $VHDAndTestFiles.ParentsVMPath
     }
 
-    HV-VMVFConfigInit -VMVFOSConfig $VMVFOSConfig | out-null
+    HV-VMVFConfigInit `
+        -VMVFOSConfig $VMVFOSConfig `
+        -VMSwitchType $VMSwitchType | out-null
 
     WBase-GenerateInfoFile | out-null
 
