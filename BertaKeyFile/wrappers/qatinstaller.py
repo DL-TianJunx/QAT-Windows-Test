@@ -262,7 +262,7 @@ class QatInstaller(BuildInstaller):
 
     def copy_test_dir(self):
         log.info('Copy qat test script from repo')
-        command = r"""Test-Path -Path {0}""".format(QATTEST_DST)
+        command = r"""Test-Path -Path {0}""".format(self.QATTEST_DST)
         out, rc = self.invoke_pscommand(self.pspath, command, 500, shell=False)
         if out:
             command = r"""Berta-CopyTestDir"""
@@ -274,7 +274,7 @@ class QatInstaller(BuildInstaller):
                 else:
                     log.info('Git qat test script is failed')
         else:
-            command = r"""git clone https://github.com/cuiyanx/QAT-Windows-Test.git {0}""".format(QATTEST_DST)
+            command = r"""git clone https://github.com/cuiyanx/QAT-Windows-Test.git {0}""".format(self.QATTEST_DST)
             out, rc = self.invoke_pscommand(self.pspath, command, 500, shell=False)
             out = self.convert_ps_return(out, 'bool')
             if rc == 0:
