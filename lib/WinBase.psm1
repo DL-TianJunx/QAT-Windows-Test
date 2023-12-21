@@ -1885,7 +1885,7 @@ function WBase-StartProcess
             -NoNewWindow `
             -PassThru
 
-        $ReturnValue.ID = $ProcessInfo.ID
+        $ReturnValue.ID = [int]($ProcessInfo.ID)
 
         return $ReturnValue
     }
@@ -1901,10 +1901,14 @@ function WBase-StartProcess
             -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords
     }
 
-    Win-DebugTimestamp -output ("{0}: Start process that id is {1}" -f $keyWords, $ReturnValue.ID)
     Win-DebugTimestamp -output ("{0}: Process output file is {1}" -f $keyWords, $ReturnValue.Output)
     Win-DebugTimestamp -output ("{0}: Process error file is {1}" -f $keyWords, $ReturnValue.Error)
     Win-DebugTimestamp -output ("{0}: Process result file is {1}" -f $keyWords, $ReturnValue.Result)
+    if ([String]::IsNullOrEmpty($ReturnValue.ID)) {
+        Win-DebugTimestamp -output ("{0}: Can not get process id" -f $keyWords)
+    } else {
+        Win-DebugTimestamp -output ("{0}: Start process that id is {1}" -f $keyWords, $ReturnValue.ID)
+    }
 
     return $ReturnValue
 }
