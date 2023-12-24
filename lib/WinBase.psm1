@@ -2364,23 +2364,23 @@ function WBase-CheckProcessOutput
         }
     }
 
+    if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
+        Win-DebugTimestamp -output (
+            "{0}: Get output log of the process > `r`n{1}" -f $keyWords, $ProcessOutputLog
+        )
+    }
+
+    if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+        Win-DebugTimestamp -output (
+            "{0}: Get error log of the process > `r`n{1}" -f $keyWords, $ProcessErrorLog
+        )
+    }
+
     if ($ReturnValue.result) {
         Win-DebugTimestamp -output (
             "The process({0}) ---------------------- passed" -f $keyWords
         )
     } else {
-        if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
-            Win-DebugTimestamp -output (
-                "{0}: Get output log of the process > `r`n{1}" -f $keyWords, $ProcessOutputLog
-            )
-        }
-
-        if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
-            Win-DebugTimestamp -output (
-                "{0}: Get error log of the process > `r`n{1}" -f $keyWords, $ProcessErrorLog
-            )
-        }
-
         Win-DebugTimestamp -output (
             "The process({0}) ---------------------- failed > {1}" -f $keyWords, $ReturnValue.error
         )
