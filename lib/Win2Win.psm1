@@ -64,6 +64,8 @@ function WTW-ProcessVMInit
         [string]$VHDPath
     )
 
+    Start-Sleep -Seconds 5
+
     WBase-GetInfoFile | out-null
 
     $LocationInfo.WriteLogToConsole = $true
@@ -398,6 +400,7 @@ function WTW-ENVInit
             $InitVMProcessArgs = "WTW-ProcessVMInit -VMNameSuffix {0}" -f $_
             $InitVMProcessArgs = "{0} -VHDPath {1}" -f $InitVMProcessArgs, $VHDPath
             $keyWords = "init_{0}" -f $_
+
             $InitVMProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
                 -ProcessArgs $InitVMProcessArgs `
@@ -419,26 +422,13 @@ function WTW-ENVInit
             -Remote $false | out-null
 
         $VMNameList | ForEach-Object {
-            $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            Win-DebugTimestamp -output (
-                "{0}: The init VM process ----------------" -f $vmName
-            )
-
+            $keyWords = "init_{0}" -f $_
             $ProcessResult = WBase-CheckProcessOutput `
-                -ProcessOutputLog $ProcessList[$_].Output `
-                -ProcessErrorLog $ProcessList[$_].Error `
+                -ProcessOutputLogPath $ProcessList[$_].Output `
+                -ProcessErrorLogPath $ProcessList[$_].Error `
                 -CheckResultFlag $false `
-                -Remote $false
-
-            if ($ProcessResult.Result) {
-                Win-DebugTimestamp -output (
-                    "{0}: The init VM process ---------------- true" -f $vmName
-                )
-            } else {
-                Win-DebugTimestamp -output (
-                    "{0}: The init VM process ---------------- false" -f $vmName
-                )
-            }
+                -Remote $false `
+                -keyWords $keyWords
         }
 
         # Re-create PS session
@@ -567,7 +557,8 @@ function WTW-EnableAndDisableQatDevice
         $Session = HV-PSSessionCreate `
             -VMName $vmName `
             -PSName $PSSessionName `
-            -IsWin $true
+            -IsWin $true `
+            -CheckFlag $false
 
         $Disableflag = WBase-EnableAndDisableQatDevice -Remote $true `
                                                        -Session $Session `
@@ -708,6 +699,8 @@ function WTW-ProcessInstaller
             error = "no_error"
         }
     }
+
+    Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
 
@@ -975,14 +968,6 @@ function WTW-Installer
 
     # Run installer test as process
     $VMNameList | ForEach-Object {
-        $PSSessionName = "Session_{0}" -f $_
-        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-        $Session = HV-PSSessionCreate `
-            -VMName $vmName `
-            -PSName $PSSessionName `
-            -IsWin $true `
-            -CheckFlag $false
-
         $InstallerTestProcessArgs = "WTW-ProcessInstaller -VMNameSuffix {0}" -f $_
         $InstallerTestProcessArgs = "{0} -TestType {1}" -f $InstallerTestProcessArgs, $TestType
         $InstallerTestkeyWords = "installer_{0}" -f $_
@@ -1020,16 +1005,13 @@ function WTW-Installer
         -Remote $false | out-null
 
     $VMNameList | ForEach-Object {
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        Win-DebugTimestamp -output (
-            "Host: The output log of installer process ---------------- {0}" -f $vmName
-        )
-
+        $InstallerTestkeyWords = "installer_{0}" -f $_
         $InstallerTestResult = WBase-CheckProcessOutput `
-            -ProcessOutputLog $InstallerProcessList[$_].Output `
-            -ProcessErrorLog $InstallerProcessList[$_].Error `
-            -ProcessResult $InstallerProcessList[$_].Result `
-            -Remote $false
+            -ProcessOutputLogPath $InstallerProcessList[$_].Output `
+            -ProcessErrorLogPath $InstallerProcessList[$_].Error `
+            -ProcessResultPath $InstallerProcessList[$_].Result `
+            -Remote $false `
+            -keyWords $InstallerTestkeyWords
 
         if ($ReturnValue.install.service.result) {
             $ReturnValue.install.service.result = $InstallerTestResult.testResult.install.service.result
@@ -1075,230 +1057,12 @@ function WTW-Installer
             $ReturnValue.cngtest.result = $InstallerTestResult.testResult.cngtest.result
             $ReturnValue.cngtest.error = $InstallerTestResult.testResult.cngtest.error
         }
-
-        if ($InstallerTestResult.result) {
-            Win-DebugTimestamp -output ("Host: The installer test of {0} is true" -f $vmName)
-        } else {
-            Win-DebugTimestamp -output ("Host: The installer test of {0} is false" -f $vmName)
-        }
     }
 
     return $ReturnValue
 }
 
 # Test: parcomp
-function WTW-ProcessParcomp
-{
-    Param(
-        [Parameter(Mandatory=$True)]
-        [string]$VMNameSuffix,
-
-        [Parameter(Mandatory=$True)]
-        [string]$TestPath,
-
-        [Parameter(Mandatory=$True)]
-        [string]$keyWords,
-
-        [Parameter(Mandatory=$True)]
-        [string]$TestType,
-
-        [bool]$CheckOutputFileFlag = $true,
-
-        [bool]$deCompressFlag = $false,
-
-        [string]$CompressProvider = "qat",
-
-        [string]$deCompressProvider = "qat",
-
-        [string]$QatCompressionType = "dynamic",
-
-        [int]$Level = 1,
-
-        [int]$Chunk = 64,
-
-        [int]$blockSize = 4096,
-
-        [int]$numThreads = 6,
-
-        [int]$numIterations = 200,
-
-        [string]$TestFileType = "high",
-
-        [int]$TestFileSize = 200
-    )
-
-    $ReturnValue = [hashtable] @{
-        result = $true
-        error = "no_error"
-        testOps = $null
-    }
-
-    WBase-GetInfoFile | out-null
-
-    $LocationInfo.WriteLogToConsole = $true
-    $LocationInfo.WriteLogToFile = $false
-
-    if (($TestType -eq "Base_Compat") -or ($TestType -eq "Base_Parameter")) {
-        $ParcompType = "Base"
-        $runParcompType = "Base"
-    } elseif (($TestType -eq "Performance_Parameter") -or ($TestType -eq "Performance")) {
-        $ParcompType = "Performance"
-        $runParcompType = "Process"
-    } elseif ($TestType -eq "Fallback") {
-        $ParcompType = "Fallback"
-        $runParcompType = "Process"
-    }
-
-    $ParcompTestOutLogPath = "{0}\\{1}" -f $TestPath, $ParcompOpts.OutputLog
-    $ParcompTestErrorLogPath = "{0}\\{1}" -f $TestPath, $ParcompOpts.ErrorLog
-    $ParcompTestResultName = "ProcessResult_{0}.json" -f $keyWords
-    $ParcompTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $ParcompTestResultName
-
-    $PSSessionName = "Session_{0}" -f $VMNameSuffix
-    $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
-    $Session = HV-PSSessionCreate `
-        -VMName $vmName `
-        -PSName $PSSessionName `
-        -IsWin $true `
-        -CheckFlag $false
-
-    # Run tracelog
-    UT-TraceLogStart -Remote $true -Session $Session | out-null
-
-    Win-DebugTimestamp -output (
-        "{0}: Start to process of {1} test..." -f $PSSessionName, $TestType
-    )
-
-    # Run parcomp test
-    $ParcompTestResult = WBase-Parcomp `
-        -Remote $true `
-        -Session $Session `
-        -deCompressFlag $deCompressFlag `
-        -CompressProvider $CompressProvider `
-        -deCompressProvider $deCompressProvider `
-        -QatCompressionType $QatCompressionType `
-        -Level $Level `
-        -Chunk $Chunk `
-        -blockSize $blockSize `
-        -numThreads $numThreads `
-        -numIterations $numIterations `
-        -ParcompType $ParcompType `
-        -runParcompType $runParcompType `
-        -TestPath $TestPath `
-        -TestFileType $TestFileType `
-        -TestFileSize $TestFileSize
-
-    Start-Sleep -Seconds 3
-
-    # For Fallback test, wait operation completed
-    if ($TestType -eq "Fallback") {
-        $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $keyWords
-        $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
-        if (-not (Test-Path -Path $StartOperationFlagPath)) {
-            New-Item `
-                -Path $LocalProcessPath `
-                -Name $StartOperationFlagName `
-                -ItemType "file" | out-null
-        }
-
-        $OperationCompletedFlagArray = @()
-        $OperationCompletedFlagArray += $OperationCompletedFlag
-        WTW-ChechFlagFile -FlagFileNameArray $OperationCompletedFlagArray | out-null
-    }
-
-    # Double check the output log
-    if ($runParcompType -eq "Process") {
-        # Wait parcomp test process
-        $WaitStatus = WBase-WaitProcessToCompletedByID `
-            -ProcessID $ParcompTestResult.process.ID `
-            -Remote $true `
-            -Session $Session
-        if (-not $WaitStatus.result) {
-            $ReturnValue.result = $WaitStatus.result
-            $ReturnValue.error = $WaitStatus.error
-        }
-
-        Start-Sleep -Seconds 3
-
-        # Check parcomp test result
-        if ($ReturnValue.result) {
-            $CheckOutput = WBase-CheckOutputLog `
-                -TestOutputLog $ParcompTestOutLogPath `
-                -TestErrorLog $ParcompTestErrorLogPath `
-                -Session $Session `
-                -Remote $true `
-                -keyWords "Mbps"
-
-            $ReturnValue.testOps = $CheckOutput.testOps
-            if (-not $CheckOutput.result) {
-                $ReturnValue.result = $CheckOutput.result
-                $ReturnValue.error = $CheckOutput.error
-            }
-        }
-    } else {
-        $ReturnValue.result = $ParcompTestResult.result
-        $ReturnValue.error = $ParcompTestResult.error
-        $ReturnValue.testOps = $ParcompTestResult.testOps
-    }
-
-    WBase-WriteHashtableToJsonFile `
-        -Info $ReturnValue `
-        -InfoFilePath $ParcompTestResultPath | out-null
-
-    # Double check the output files
-    if (($CheckOutputFileFlag) -and ($ReturnValue.result)) {
-        Win-DebugTimestamp -output ("{0}: Double check the output files" -f $PSSessionName)
-
-        $CheckMD5Result = WBase-CheckOutputFile `
-            -Remote $true `
-            -Session $Session `
-            -deCompressFlag $deCompressFlag `
-            -CompressProvider $CompressProvider `
-            -deCompressProvider $deCompressProvider `
-            -QatCompressionType $QatCompressionType `
-            -Level $Level `
-            -Chunk $Chunk `
-            -blockSize $blockSize `
-            -TestFileType $TestFileType `
-            -TestFileSize $TestFileSize `
-            -TestPath $TestPath
-
-        if (-not $CheckMD5Result.result) {
-            $ReturnValue.result = $CheckMD5Result.result
-            $ReturnValue.error = $CheckMD5Result.error
-
-            WBase-WriteHashtableToJsonFile `
-                -Info $ReturnValue `
-                -InfoFilePath $ParcompTestResultPath | out-null
-        }
-    }
-
-    # After parcomp fallback test, run simple parcomp test
-    if (($TestType -eq "Fallback") -and ($ReturnValue.result)) {
-        Win-DebugTimestamp -output (
-            "{0}: After parcomp fallback test, run simple parcomp test" -f $PSSessionName
-        )
-
-        $ParcompTestResult = WTW-SimpleParcomp -Session $Session
-        if (-not $ParcompTestResult.result) {
-            $ReturnValue.result = $ParcompTestResult.result
-            $ReturnValue.error = $ParcompTestResult.error
-
-            WBase-WriteHashtableToJsonFile `
-                -Info $ReturnValue `
-                -InfoFilePath $ParcompTestResultPath | out-null
-        }
-    }
-
-    # Handle all error
-    if (-not $ReturnValue.result) {
-        WTW-RemoteErrorHandle `
-            -VMNameSuffix $VMNameSuffix `
-            -TestResult $ReturnValue `
-            -ParameterFileName $LocationInfo.TestCaseName | out-null
-    }
-}
-
 function WTW-SimpleParcomp
 {
     Param(
@@ -1330,6 +1094,310 @@ function WTW-SimpleParcomp
     $ReturnValue.testOps = $ParcompTestResult.testOps
 
     return $ReturnValue
+}
+
+function WTW-ProcessParcomp
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$VMNameSuffix,
+
+        [Parameter(Mandatory=$True)]
+        [string]$keyWords,
+
+        [Parameter(Mandatory=$True)]
+        [string]$TestType,
+
+        [Parameter(Mandatory=$True)]
+        [string]$CompressType = "Compress",
+
+        [bool]$CheckOutputFileFlag = $true,
+
+        [string]$CompressProvider = "qat",
+
+        [string]$deCompressProvider = "qat",
+
+        [string]$QatCompressionType = "dynamic",
+
+        [int]$Level = 1,
+
+        [int]$Chunk = 64,
+
+        [int]$blockSize = 4096,
+
+        [int]$numThreads = 6,
+
+        [int]$numIterations = 200,
+
+        [string]$TestFileType = "high",
+
+        [int]$TestFileSize = 200
+    )
+
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+        testOps = $null
+    }
+
+    Start-Sleep -Seconds 5
+
+    WBase-GetInfoFile | out-null
+
+    $LocationInfo.WriteLogToConsole = $true
+    $LocationInfo.WriteLogToFile = $false
+
+    if (($TestType -eq "Base_Compat") -or ($TestType -eq "Base_Parameter")) {
+        $ParcompType = "Base"
+        $runParcompType = "Base"
+    } elseif (($TestType -eq "Performance_Parameter") -or ($TestType -eq "Performance")) {
+        $ParcompType = "Performance"
+        $runParcompType = "Process"
+    } elseif ($TestType -eq "Fallback") {
+        $ParcompType = "Fallback"
+        $runParcompType = "Process"
+    }
+
+    $ParcompTestResultName = "ProcessResult_{0}.json" -f $keyWords
+    $ParcompTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $ParcompTestResultName
+
+    $PSSessionName = "Session_{0}" -f $VMNameSuffix
+    $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
+    $Session = HV-PSSessionCreate `
+        -VMName $vmName `
+        -PSName $PSSessionName `
+        -IsWin $true `
+        -CheckFlag $false
+
+    # Run tracelog
+    UT-TraceLogStart -Remote $true -Session $Session | out-null
+
+    Win-DebugTimestamp -output (
+        "{0}: Start to process of {1} test..." -f $PSSessionName, $TestType
+    )
+
+    # Run parcomp test
+    $ProcessCount = 0
+    if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+        $ProcessCount += 1
+        $deCompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
+        $deCompressTestResult = WBase-Parcomp `
+            -Remote $true `
+            -Session $Session `
+            -deCompressFlag $true `
+            -CompressProvider $CompressProvider `
+            -deCompressProvider $deCompressProvider `
+            -QatCompressionType $QatCompressionType `
+            -Level $Level `
+            -Chunk $Chunk `
+            -blockSize $blockSize `
+            -numThreads $numThreads `
+            -numIterations $numIterations `
+            -ParcompType $ParcompType `
+            -runParcompType $runParcompType `
+            -TestPath $deCompressTestPath `
+            -TestFileType $TestFileType `
+            -TestFileSize $TestFileSize
+    }
+
+    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+        $ProcessCount += 1
+        $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
+        $CompressTestResult = WBase-Parcomp `
+            -Remote $true `
+            -Session $Session `
+            -deCompressFlag $false `
+            -CompressProvider $CompressProvider `
+            -deCompressProvider $deCompressProvider `
+            -QatCompressionType $QatCompressionType `
+            -Level $Level `
+            -Chunk $Chunk `
+            -blockSize $blockSize `
+            -numThreads $numThreads `
+            -numIterations $numIterations `
+            -ParcompType $ParcompType `
+            -runParcompType $runParcompType `
+            -TestPath $CompressTestPath `
+            -TestFileType $TestFileType `
+            -TestFileSize $TestFileSize
+    }
+
+    # Check parcomp test process number
+    $CheckProcessNumberFlag = WBase-CheckProcessNumber `
+        -ProcessName "parcomp" `
+        -ProcessNumber $ProcessCount `
+        -Remote $true `
+        -Session $Session
+    if (-not $CheckProcessNumberFlag.result) {
+        $ReturnValue.result = $CheckProcessNumberFlag.result
+        $ReturnValue.error = $CheckProcessNumberFlag.error
+    }
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $ReturnValue `
+        -InfoFilePath $ParcompTestResultPath | out-null
+
+    # For Fallback test, wait operation completed
+    if ($TestType -eq "Fallback") {
+        $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $keyWords
+        $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+        if (-not (Test-Path -Path $StartOperationFlagPath)) {
+            New-Item `
+                -Path $LocalProcessPath `
+                -Name $StartOperationFlagName `
+                -ItemType "file" | out-null
+        }
+
+        $OperationCompletedFlagArray = @()
+        $OperationCompletedFlagArray += $OperationCompletedFlag
+        WTW-ChechFlagFile -FlagFileNameArray $OperationCompletedFlagArray | out-null
+    }
+
+    # Double check the output log
+    Win-DebugTimestamp -output ("{0}: Double check the output log" -f $PSSessionName)
+    if ($runParcompType -eq "Process") {
+        # Wait parcomp test process
+        $WaitStatus = WBase-WaitProcessToCompletedByName `
+            -ProcessName "parcomp" `
+            -Remote $true `
+            -Session $Session
+        if (-not $WaitStatus.result) {
+            $ReturnValue.result = $WaitStatus.result
+            $ReturnValue.error = $WaitStatus.error
+        }
+
+        # Check parcomp test result
+        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+            $CompressTestOutLogPath = "{0}\\{1}\\{2}" -f
+                $STVWinPath,
+                $ParcompOpts.CompressPathName,
+                $ParcompOpts.OutputLog
+            $CompressTestErrorLogPath = "{0}\\{1}\\{2}" -f
+                $STVWinPath,
+                $ParcompOpts.CompressPathName,
+                $ParcompOpts.ErrorLog
+            $CheckOutput = WBase-CheckOutputLog `
+                -TestOutputLog $CompressTestOutLogPath `
+                -TestErrorLog $CompressTestErrorLogPath `
+                -Session $Session `
+                -Remote $true `
+                -keyWords "Mbps"
+            if (-not $CheckOutput.result) {
+                $ReturnValue.result = $CheckOutput.result
+                $ReturnValue.error = $CheckOutput.error
+            }
+        }
+
+        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+            $deCompressTestOutLogPath = "{0}\\{1}\\{2}" -f
+                $STVWinPath,
+                $ParcompOpts.deCompressPathName,
+                $ParcompOpts.OutputLog
+            $deCompressTestErrorLogPath = "{0}\\{1}\\{2}" -f
+                $STVWinPath,
+                $ParcompOpts.deCompressPathName,
+                $ParcompOpts.ErrorLog
+            $CheckOutput = WBase-CheckOutputLog `
+                -TestOutputLog $deCompressTestOutLogPath `
+                -TestErrorLog $deCompressTestErrorLogPath `
+                -Session $Session `
+                -Remote $true `
+                -keyWords "Mbps"
+            if (-not $CheckOutput.result) {
+                $ReturnValue.result = $CheckOutput.result
+                $ReturnValue.error = $CheckOutput.error
+            }
+        }
+    } else {
+        $ReturnValue.result = $ParcompTestResult.result
+        $ReturnValue.error = $ParcompTestResult.error
+        $ReturnValue.testOps = $ParcompTestResult.testOps
+    }
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $ReturnValue `
+        -InfoFilePath $ParcompTestResultPath | out-null
+
+    # Double check the output files
+    if (($CheckOutputFileFlag) -and ($ReturnValue.result)) {
+        Win-DebugTimestamp -output ("{0}: Double check the output files" -f $PSSessionName)
+        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+            $CompressTestLogPath = "{0}\\{1}" -f
+                $STVWinPath,
+                $ParcompOpts.CompressPathName
+            $CheckMD5Result = WBase-CheckOutputFile `
+                -Remote $true `
+                -Session $Session `
+                -deCompressFlag $false `
+                -CompressProvider $CompressProvider `
+                -deCompressProvider $deCompressProvider `
+                -QatCompressionType $QatCompressionType `
+                -Level $Level `
+                -Chunk $Chunk `
+                -blockSize $blockSize `
+                -TestFileType $TestFileType `
+                -TestFileSize $TestFileSize `
+                -TestPath $CompressTestLogPath
+
+            if (-not $CheckMD5Result.result) {
+                $ReturnValue.result = $CheckMD5Result.result
+                $ReturnValue.error = $CheckMD5Result.error
+            }
+        }
+
+        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+            $deCompressTestLogPath = "{0}\\{1}" -f
+                $STVWinPath,
+                $ParcompOpts.deCompressPathName
+            $CheckMD5Result = WBase-CheckOutputFile `
+                -Remote $true `
+                -Session $Session `
+                -deCompressFlag $true `
+                -CompressProvider $CompressProvider `
+                -deCompressProvider $deCompressProvider `
+                -QatCompressionType $QatCompressionType `
+                -Level $Level `
+                -Chunk $Chunk `
+                -blockSize $blockSize `
+                -TestFileType $TestFileType `
+                -TestFileSize $TestFileSize `
+                -TestPath $deCompressTestLogPath
+
+            if (-not $CheckMD5Result.result) {
+                $ReturnValue.result = $CheckMD5Result.result
+                $ReturnValue.error = $CheckMD5Result.error
+            }
+        }
+
+        WBase-WriteHashtableToJsonFile `
+            -Info $ReturnValue `
+            -InfoFilePath $ParcompTestResultPath | out-null
+    }
+
+    # After parcomp fallback test, run simple parcomp test
+    if (($TestType -eq "Fallback") -and ($ReturnValue.result)) {
+        Win-DebugTimestamp -output (
+            "{0}: After parcomp fallback test, run simple parcomp test" -f $PSSessionName
+        )
+
+        $ParcompTestResult = WTW-SimpleParcomp -Session $Session
+        if (-not $ParcompTestResult.result) {
+            $ReturnValue.result = $ParcompTestResult.result
+            $ReturnValue.error = $ParcompTestResult.error
+
+            WBase-WriteHashtableToJsonFile `
+                -Info $ReturnValue `
+                -InfoFilePath $ParcompTestResultPath | out-null
+        }
+    }
+
+    # Handle all error
+    if (-not $ReturnValue.result) {
+        WTW-RemoteErrorHandle `
+            -VMNameSuffix $VMNameSuffix `
+            -TestResult $ReturnValue `
+            -ParameterFileName $LocationInfo.TestCaseName | out-null
+    }
 }
 
 function WTW-Parcomp
@@ -1373,11 +1441,9 @@ function WTW-Parcomp
     }
 
     $VMNameList = $LocationInfo.VM.NameArray
-    $CompressProcessList = [hashtable] @{}
-    $deCompressProcessList = [hashtable] @{}
+    $ParcompProcessList = [hashtable] @{}
     $ProcessIDArray = [System.Array] @()
     $StartOperationFlagArray = [System.Array] @()
-    $TestSourceFile = "{0}\\{1}{2}.txt" -f $STVWinPath, $TestFileType, $TestFileSize
 
     if ([String]::IsNullOrEmpty($TestPath)) {
         $TestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.PathName
@@ -1395,15 +1461,8 @@ function WTW-Parcomp
 
     # Run parcomp test as process
     $VMNameList | ForEach-Object {
-        $PSSessionName = "Session_{0}" -f $_
-        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-        $Session = HV-PSSessionCreate `
-            -VMName $vmName `
-            -PSName $PSSessionName `
-            -IsWin $true `
-            -CheckFlag $false
-
         $ParcompProcessArgs = "WTW-ProcessParcomp -VMNameSuffix {0}" -f $_
+        $ParcompProcessArgs = "{0} -CompressType {1}" -f $ParcompProcessArgs, $CompressType
         $ParcompProcessArgs = "{0} -CompressProvider {1}" -f $ParcompProcessArgs, $CompressProvider
         $ParcompProcessArgs = "{0} -deCompressProvider {1}" -f $ParcompProcessArgs, $deCompressProvider
         $ParcompProcessArgs = "{0} -QatCompressionType {1}" -f $ParcompProcessArgs, $QatCompressionType
@@ -1415,6 +1474,8 @@ function WTW-Parcomp
         $ParcompProcessArgs = "{0} -TestFileType {1}" -f $ParcompProcessArgs, $TestFileType
         $ParcompProcessArgs = "{0} -TestFileSize {1}" -f $ParcompProcessArgs, $TestFileSize
         $ParcompProcessArgs = "{0} -TestType {1}" -f $ParcompProcessArgs, $TestType
+        $ParcompkeyWords = "Parcomp_{0}" -f $_
+        $ParcompProcessArgs = "{0} -keyWords {1}" -f $ParcompProcessArgs, $ParcompkeyWords
 
         if ($TestType -eq "Performance") {
             $ParcompProcessArgs = "{0} -CheckOutputFileFlag 0" -f $ParcompProcessArgs
@@ -1422,77 +1483,28 @@ function WTW-Parcomp
             $ParcompProcessArgs = "{0} -CheckOutputFileFlag 1" -f $ParcompProcessArgs
         }
 
-        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-            if ($TestType -eq "Fallback") {
-                $CompressTestPathName = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
-            } else {
-                $CompressTestPathName = $TestPath
+        # Delete Start Operation Flag file
+        if ($TestType -eq "Fallback") {
+            $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $ParcompkeyWords
+            $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
+            if (Test-Path -Path $StartOperationFlagPath) {
+                Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
             }
-
-            $CompressProcessArgs = "{0} -TestPath {1}" -f $ParcompProcessArgs, $CompressTestPathName
-            $CompressProcessArgs = "{0} -deCompressFlag 0" -f $CompressProcessArgs
-            $CompresskeyWords = "Compress_{0}" -f $_
-            $CompressProcessArgs = "{0} -keyWords {1}" -f $CompressProcessArgs, $CompresskeyWords
-
-            # Delete Start Operation Flag file
-            if ($TestType -eq "Fallback") {
-                $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $CompresskeyWords
-                $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
-                if (Test-Path -Path $StartOperationFlagPath) {
-                    Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
-                }
-                $StartOperationFlagArray += $StartOperationFlagName
-            }
-
-            $CompressProcess = WBase-StartProcess `
-                -ProcessFilePath "pwsh" `
-                -ProcessArgs $CompressProcessArgs `
-                -keyWords $CompresskeyWords
-
-            $CompressProcessList[$_] = [hashtable] @{
-                Output = $CompressProcess.Output
-                Error = $CompressProcess.Error
-                Result = $CompressProcess.Result
-            }
-
-            $ProcessIDArray += $CompressProcess.ID
+            $StartOperationFlagArray += $StartOperationFlagName
         }
 
-        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
-            if ($TestType -eq "Fallback") {
-                $deCompressTestPathName = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
-            } else {
-                $deCompressTestPathName = $TestPath
-            }
+        $ParcompProcess = WBase-StartProcess `
+            -ProcessFilePath "pwsh" `
+            -ProcessArgs $ParcompProcessArgs `
+            -keyWords $ParcompkeyWords
 
-            $deCompressProcessArgs = "{0} -TestPath {1}" -f $ParcompProcessArgs, $deCompressTestPathName
-            $deCompressProcessArgs = "{0} -deCompressFlag 1" -f $deCompressProcessArgs
-            $deCompresskeyWords = "deCompress_{0}" -f $_
-            $deCompressProcessArgs = "{0} -keyWords {1}" -f $deCompressProcessArgs, $deCompresskeyWords
-
-            # Delete Start Operation Flag file
-            if ($TestType -eq "Fallback") {
-                $StartOperationFlagName = "{0}_{1}" -f $StartOperationFlag, $deCompresskeyWords
-                $StartOperationFlagPath = "{0}\\{1}" -f $LocalProcessPath, $StartOperationFlagName
-                if (Test-Path -Path $StartOperationFlagPath) {
-                    Get-Item -Path $StartOperationFlagPath | Remove-Item -Recurse -Force | out-null
-                }
-                $StartOperationFlagArray += $StartOperationFlagName
-            }
-
-            $deCompressProcess = WBase-StartProcess `
-                -ProcessFilePath "pwsh" `
-                -ProcessArgs $deCompressProcessArgs `
-                -keyWords $deCompresskeyWords
-
-            $deCompressProcessList[$_] = [hashtable] @{
-                Output = $deCompressProcess.Output
-                Error = $deCompressProcess.Error
-                Result = $deCompressProcess.Result
-            }
-
-            $ProcessIDArray += $deCompressProcess.ID
+        $ParcompProcessList[$_] = [hashtable] @{
+            Output = $ParcompProcess.Output
+            Error = $ParcompProcess.Error
+            Result = $ParcompProcess.Result
         }
+
+        $ProcessIDArray += $ParcompProcess.ID
     }
 
     # Run operation
@@ -1546,62 +1558,18 @@ function WTW-Parcomp
     # Check output and error log for parcomp process
     $TotalOps = 0
     $VMNameList | ForEach-Object {
-        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
+        $ParcompkeyWords = "Parcomp_{0}" -f $_
+        $ParcompResult = WBase-CheckProcessOutput `
+            -ProcessOutputLogPath $ParcompProcessList[$_].Output `
+            -ProcessErrorLogPath $ParcompProcessList[$_].Error `
+            -ProcessResultPath $ParcompProcessList[$_].Result `
+            -Remote $false `
+            -keyWords $ParcompkeyWords
 
-        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-            Win-DebugTimestamp -output (
-                "{0}: The compress parcomp process ----------------" -f $vmName
-            )
-
-            $CompressResult = WBase-CheckProcessOutput `
-                -ProcessOutputLog $CompressProcessList[$_].Output `
-                -ProcessErrorLog $CompressProcessList[$_].Error `
-                -ProcessResult $CompressProcessList[$_].Result `
-                -Remote $false
-
-            $TotalOps += $CompressResult.testResult.testOps
-            if ($ReturnValue.result) {
-                $ReturnValue.result = $CompressResult.result
-                $ReturnValue.error = $CompressResult.error
-            }
-
-            if ($CompressResult.result) {
-                Win-DebugTimestamp -output (
-                    "{0}: The compress parcomp process ---------------- true" -f $vmName
-                )
-            } else {
-                Win-DebugTimestamp -output (
-                    "{0}: The compress parcomp process ---------------- false" -f $vmName
-                )
-            }
-        }
-
-        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
-            Win-DebugTimestamp -output (
-                "{0}: The decompress parcomp process ----------------" -f $vmName
-            )
-
-            $deCompressResult = WBase-CheckProcessOutput `
-                -ProcessOutputLog $deCompressProcessList[$_].Output `
-                -ProcessErrorLog $deCompressProcessList[$_].Error `
-                -ProcessResult $deCompressProcessList[$_].Result `
-                -Remote $false
-
-            $TotalOps += $deCompressResult.testResult.testOps
-            if ($ReturnValue.result) {
-                $ReturnValue.result = $deCompressResult.result
-                $ReturnValue.error = $deCompressResult.error
-            }
-
-            if ($deCompressResult.result) {
-                Win-DebugTimestamp -output (
-                    "{0}: The decompress parcomp process ---------------- true" -f $vmName
-                )
-            } else {
-                Win-DebugTimestamp -output (
-                    "{0}: The decompress parcomp process ---------------- false" -f $vmName
-                )
-            }
+        $TotalOps += $ParcompResult.testResult.testOps
+        if ($ReturnValue.result) {
+            $ReturnValue.result = $ParcompResult.result
+            $ReturnValue.error = $ParcompResult.error
         }
     }
 
@@ -1611,6 +1579,57 @@ function WTW-Parcomp
 }
 
 # Test: cngtest
+function WTW-SimpleCNGTest
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [object]$Session
+    )
+
+    $ReturnValue = [hashtable] @{
+        result = $true
+        error = "no_error"
+        testOps = $null
+    }
+
+    $CNGTestResult = WBase-CNGTest `
+        -Remote $true `
+        -Session $Session `
+        -algo "rsa" `
+        -operation "encrypt" `
+        -provider "qa" `
+        -keyLength 2048 `
+        -ecccurve "nistP256" `
+        -padding "pkcs1" `
+        -numThreads 8 `
+        -numIter 10
+
+    WBase-WaitProcessToCompletedByID `
+        -ProcessID $CNGTestResult.process.ID `
+        -Remote $true `
+        -Session $Session | out-null
+
+    $CNGTestOutLog = "{0}\\{1}\\{2}" -f
+        $STVWinPath,
+        $CNGTestOpts.PathName,
+        $CNGTestOpts.OutputLog
+    $CNGTestErrorLog = "{0}\\{1}\\{2}" -f
+        $STVWinPath,
+        $CNGTestOpts.PathName,
+        $CNGTestOpts.ErrorLog
+    $CheckOutput = WBase-CheckOutputLog `
+        -TestOutputLog $CNGTestOutLog `
+        -TestErrorLog $CNGTestErrorLog `
+        -Session $Session `
+        -Remote $true `
+        -keyWords "Ops/s"
+
+    $ReturnValue.result = $CheckOutput.result
+    $ReturnValue.error = $CheckOutput.error
+
+    return $ReturnValue
+}
+
 function WTW-ProcessCNGTest
 {
     Param(
@@ -1649,6 +1668,8 @@ function WTW-ProcessCNGTest
         error = "no_error"
         testOps = $null
     }
+
+    Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
 
@@ -1759,57 +1780,6 @@ function WTW-ProcessCNGTest
     }
 }
 
-function WTW-SimpleCNGTest
-{
-    Param(
-        [Parameter(Mandatory=$True)]
-        [object]$Session
-    )
-
-    $ReturnValue = [hashtable] @{
-        result = $true
-        error = "no_error"
-        testOps = $null
-    }
-
-    $CNGTestResult = WBase-CNGTest `
-        -Remote $true `
-        -Session $Session `
-        -algo "rsa" `
-        -operation "encrypt" `
-        -provider "qa" `
-        -keyLength 2048 `
-        -ecccurve "nistP256" `
-        -padding "pkcs1" `
-        -numThreads 8 `
-        -numIter 10
-
-    WBase-WaitProcessToCompletedByID `
-        -ProcessID $CNGTestResult.process.ID `
-        -Remote $true `
-        -Session $Session | out-null
-
-    $CNGTestOutLog = "{0}\\{1}\\{2}" -f
-        $STVWinPath,
-        $CNGTestOpts.PathName,
-        $CNGTestOpts.OutputLog
-    $CNGTestErrorLog = "{0}\\{1}\\{2}" -f
-        $STVWinPath,
-        $CNGTestOpts.PathName,
-        $CNGTestOpts.ErrorLog
-    $CheckOutput = WBase-CheckOutputLog `
-        -TestOutputLog $CNGTestOutLog `
-        -TestErrorLog $CNGTestErrorLog `
-        -Session $Session `
-        -Remote $true `
-        -keyWords "Ops/s"
-
-    $ReturnValue.result = $CheckOutput.result
-    $ReturnValue.error = $CheckOutput.error
-
-    return $ReturnValue
-}
-
 function WTW-CNGTest
 {
     Param(
@@ -1865,14 +1835,6 @@ function WTW-CNGTest
 
     # Run cngtest as process
     $VMNameList | ForEach-Object {
-        $PSSessionName = "Session_{0}" -f $_
-        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-        $Session = HV-PSSessionCreate `
-            -VMName $vmName `
-            -PSName $PSSessionName `
-            -IsWin $true `
-            -CheckFlag $false
-
         $CNGTestProcessArgs = "WTW-ProcessCNGTest -VMNameSuffix {0}" -f $_
         $CNGTestProcessArgs = "{0} -algo {1}" -f $CNGTestProcessArgs, $algo
         $CNGTestProcessArgs = "{0} -operation {1}" -f $CNGTestProcessArgs, $operation
@@ -1884,7 +1846,7 @@ function WTW-CNGTest
         $CNGTestProcessArgs = "{0} -numIter {1}" -f $CNGTestProcessArgs, $numIter
         $CNGTestProcessArgs = "{0} -TestPath {1}" -f $CNGTestProcessArgs, $TestPath
         $CNGTestProcessArgs = "{0} -TestType {1}" -f $CNGTestProcessArgs, $TestType
-        $CNGTestkeyWords = "{0}_{1}" -f $operation, $_
+        $CNGTestkeyWords = "cngtest_{0}" -f $_
         $CNGTestProcessArgs = "{0} -keyWords {1}" -f $CNGTestProcessArgs, $CNGTestkeyWords
 
         # Delete Start Operation Flag file
@@ -1961,31 +1923,18 @@ function WTW-CNGTest
     # Check output and error log for cngtest process
     $TotalOps = 0
     $VMNameList | ForEach-Object {
-        $vmName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-        Win-DebugTimestamp -output (
-            "{0}: The CNGTest process ----------------" -f $vmName
-        )
-
+        $CNGTestkeyWords = "cngtest_{0}" -f $_
         $CNGTestResult = WBase-CheckProcessOutput `
-            -ProcessOutputLog $CNGTestProcessList[$_].Output `
-            -ProcessErrorLog $CNGTestProcessList[$_].Error `
-            -ProcessResult $CNGTestProcessList[$_].Result `
-            -Remote $false
+            -ProcessOutputLogPath $CNGTestProcessList[$_].Output `
+            -ProcessErrorLogPath $CNGTestProcessList[$_].Error `
+            -ProcessResultPath $CNGTestProcessList[$_].Result `
+            -Remote $false `
+            -keyWords $CNGTestkeyWords
 
         $TotalOps += $CNGTestResult.testResult.testOps
         if ($ReturnValue.result) {
             $ReturnValue.result = $CNGTestResult.result
             $ReturnValue.error = $CNGTestResult.error
-        }
-
-        if ($CNGTestResult.result) {
-            Win-DebugTimestamp -output (
-                "{0}: The CNGTest process ---------------- true" -f $vmName
-            )
-        } else {
-            Win-DebugTimestamp -output (
-                "{0}: The CNGTest process ---------------- false" -f $vmName
-            )
         }
     }
 

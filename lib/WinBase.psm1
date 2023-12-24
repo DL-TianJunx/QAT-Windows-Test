@@ -12,6 +12,7 @@ Import-Module "$QATTESTPATH\\lib\\Win2Linux.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\Domain.psm1" -Force -DisableNameChecking
+Import-Module "$QATTESTPATH\\lib\\GTest.psm1" -Force -DisableNameChecking
 
 # About Init
 function Win-DebugTimestamp
@@ -508,6 +509,10 @@ function WBase-LocationInfoInit
     )
 
     # Init location Info
+    if ([String]::IsNullOrEmpty($LocationInfo.HVMode)) {
+        $LocationInfo.HVMode = $BertaConfig.HV_mode
+    }
+
     $LocationInfo.UQMode = $BertaConfig.UQ_mode
     $LocationInfo.TestMode = $BertaConfig.test_mode
     $LocationInfo.DebugMode = $BertaConfig.DebugMode
@@ -1825,8 +1830,12 @@ function WBase-StartProcess
         Result = $null
     }
 
+    Win-DebugTimestamp -output ("Start process ---------------------- {0}" -f $keyWords)
+    Win-DebugTimestamp -output ("{0}: Process file > {1}" -f $keyWords, $ProcessFilePath)
+    Win-DebugTimestamp -output ("{0}: Process args > {1}" -f $keyWords, $ProcessArgs)
+
     $ScriptBlock = {
-        Param($ProcessFilePath, $ProcessArgs, $keyWords)
+        Param($ProcessFilePath, $ProcessArgs, $keyWords, $LocalProcessPath)
         $ReturnValue = [hashtable] @{
             ID = $null
             Output = $null
@@ -1885,7 +1894,14 @@ function WBase-StartProcess
             -NoNewWindow `
             -PassThru
 
-        $ReturnValue.ID = [int]($ProcessInfo.ID)
+        $GetProcessError = $null
+        $ProcessOb = Get-Process `
+            -ID $ProcessInfo.ID `
+            -ErrorAction SilentlyContinue `
+            -ErrorVariable GetProcessError
+        if ([String]::IsNullOrEmpty($GetProcessError)) {
+            $ReturnValue.ID = [int]($ProcessInfo.ID)
+        }
 
         return $ReturnValue
     }
@@ -1894,20 +1910,20 @@ function WBase-StartProcess
         $ReturnValue = Invoke-Command `
             -Session $Session `
             -ScriptBlock $ScriptBlock `
-            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords
+            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords, $LocalProcessPath
     } else {
         $ReturnValue = Invoke-Command `
             -ScriptBlock $ScriptBlock `
-            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords
+            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords, $LocalProcessPath
     }
 
-    Win-DebugTimestamp -output ("{0}: Process output file is {1}" -f $keyWords, $ReturnValue.Output)
-    Win-DebugTimestamp -output ("{0}: Process error file is {1}" -f $keyWords, $ReturnValue.Error)
-    Win-DebugTimestamp -output ("{0}: Process result file is {1}" -f $keyWords, $ReturnValue.Result)
+    Win-DebugTimestamp -output ("{0}: Process output file > {1}" -f $keyWords, $ReturnValue.Output)
+    Win-DebugTimestamp -output ("{0}: Process error file > {1}" -f $keyWords, $ReturnValue.Error)
+    Win-DebugTimestamp -output ("{0}: Process result file > {1}" -f $keyWords, $ReturnValue.Result)
     if ([String]::IsNullOrEmpty($ReturnValue.ID)) {
         Win-DebugTimestamp -output ("{0}: Can not get process id" -f $keyWords)
     } else {
-        Win-DebugTimestamp -output ("{0}: Start process that id is {1}" -f $keyWords, $ReturnValue.ID)
+        Win-DebugTimestamp -output ("{0}: Process id > {1}" -f $keyWords, $ReturnValue.ID)
     }
 
     return $ReturnValue
@@ -2151,10 +2167,13 @@ function WBase-CheckProcessOutput
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [string]$ProcessOutputLog,
+        [string]$ProcessOutputLogPath,
 
         [Parameter(Mandatory=$True)]
-        [string]$ProcessErrorLog,
+        [string]$ProcessErrorLogPath,
+
+        [Parameter(Mandatory=$True)]
+        [string]$keyWords,
 
         [Parameter(Mandatory=$True)]
         [bool]$Remote,
@@ -2163,7 +2182,7 @@ function WBase-CheckProcessOutput
 
         [bool]$CheckResultFlag = $true,
 
-        [string]$ProcessResult
+        [string]$ProcessResultPath = $null
     )
 
     $ReturnValue = [hashtable] @{
@@ -2173,48 +2192,44 @@ function WBase-CheckProcessOutput
     }
 
     if ($Remote) {
-        $LogKeyWord = $Session.Name
-
         $ProcessOutputLog = Invoke-Command -Session $Session -ScriptBlock {
-            Param($ProcessOutputLog)
-            if (Test-Path -Path $ProcessOutputLog) {
-                $ReturnValue = Get-Content -Path $ProcessOutputLog -Raw
+            Param($ProcessOutputLogPath)
+            if (Test-Path -Path $ProcessOutputLogPath) {
+                $ReturnValue = Get-Content -Path $ProcessOutputLogPath -Raw
             } else {
                 $ReturnValue = $null
             }
 
             return $ReturnValue
-        } -ArgumentList $ProcessOutputLog
+        } -ArgumentList $ProcessOutputLogPath
 
         $ProcessErrorLog = Invoke-Command -Session $Session -ScriptBlock {
-            Param($ProcessErrorLog)
-            if (Test-Path -Path $ProcessErrorLog) {
-                $ReturnValue = Get-Content -Path $ProcessErrorLog -Raw
+            Param($ProcessErrorLogPath)
+            if (Test-Path -Path $ProcessErrorLogPath) {
+                $ReturnValue = Get-Content -Path $ProcessErrorLogPath -Raw
             } else {
                 $ReturnValue = $null
             }
 
             return $ReturnValue
-        } -ArgumentList $ProcessErrorLog
+        } -ArgumentList $ProcessErrorLogPath
     } else {
-        $LogKeyWord = "Host"
-
-        if (Test-Path -Path $ProcessOutputLog) {
-            $ProcessOutputLog = Get-Content -Path $ProcessOutputLog -Raw
+        if (Test-Path -Path $ProcessOutputLogPath) {
+            $ProcessOutputLog = Get-Content -Path $ProcessOutputLogPath -Raw
         } else {
             $ProcessOutputLog = $null
         }
 
-        if (Test-Path -Path $ProcessErrorLog) {
-            $ProcessErrorLog = Get-Content -Path $ProcessErrorLog -Raw
+        if (Test-Path -Path $ProcessErrorLogPath) {
+            $ProcessErrorLog = Get-Content -Path $ProcessErrorLogPath -Raw
         } else {
             $ProcessErrorLog = $null
         }
     }
 
     if ($CheckResultFlag) {
-        if ([System.IO.File]::Exists($ProcessResult)) {
-            $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $ProcessResult
+        if ([System.IO.File]::Exists($ProcessResultPath)) {
+            $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $ProcessResultPath
             if ([String]::IsNullOrEmpty($ProcessResultHashtable)) {
                 $ReturnValue.result = $false
                 $ReturnValue.error = "no_test_result"
@@ -2250,15 +2265,124 @@ function WBase-CheckProcessOutput
         }
     }
 
-    if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
-        Win-DebugTimestamp -output (
-            "{0}: Get output log of the process > `r`n{1}" -f $LogKeyWord, $ProcessOutputLog
-        )
+    # Copy outputlog and errorlog files to BertaResultPath
+    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+        $ProcessOutputLogPathName = Split-Path -Path $ProcessOutputLogPath -Leaf
+        $ProcessErrorLogPathName = Split-Path -Path $ProcessErrorLogPath -Leaf
+    } else {
+        $ProcessOutputLogPathName = "ProcessOutputLog_{0}_{1}.txt" -f
+            $keyWords,
+            $LocationInfo.TestCaseName
+        $ProcessErrorLogPathName = "ProcessErrorLog_{0}_{1}.txt" -f
+            $keyWords,
+            $LocationInfo.TestCaseName
     }
 
-    if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+    $BertaResultProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+    if (-not (Test-Path -Path $BertaResultProcessPath)) {
+        New-Item -Path $BertaResultProcessPath -ItemType Directory | out-null
+    }
+
+    $ProcessOutputLogDestination = "{0}\\{1}" -f
+        $BertaResultProcessPath,
+        $ProcessOutputLogPathName
+    if (Test-Path -Path $ProcessOutputLogDestination) {
+        Remove-Item -Path $ProcessOutputLogDestination -Force | out-null
+    }
+
+    $ProcessErrorLogDestination = "{0}\\{1}" -f
+        $BertaResultProcessPath,
+        $ProcessErrorLogPathName
+    if (Test-Path -Path $ProcessErrorLogDestination) {
+        Remove-Item -Path $ProcessErrorLogDestination -Force | out-null
+    }
+
+    Win-DebugTimestamp -output (
+        "{0}: Move output log from '{1}' to '{2}'" -f
+            $keyWords,
+            $ProcessOutputLogPath,
+            $ProcessOutputLogDestination
+    )
+    Win-DebugTimestamp -output (
+        "{0}: Move error log from '{1}' to '{2}'" -f
+            $keyWords,
+            $ProcessErrorLogPath,
+            $ProcessErrorLogDestination
+    )
+
+    if ($Remote) {
+        if (Invoke-Command -Session $Session -ScriptBlock {
+                Param($ProcessOutputLogPath)
+                Test-Path -Path $ProcessOutputLogPath
+            } -ArgumentList $ProcessOutputLogPath) {
+            Copy-Item `
+                -FromSession $Session `
+                -Path $ProcessOutputLogPath `
+                -Destination $ProcessOutputLogDestination `
+                -Force `
+                -Confirm:$false | out-null
+
+            Invoke-Command -Session $Session -ScriptBlock {
+                Param($ProcessOutputLogPath)
+                Remove-Item -Path $ProcessOutputLogPath -Force | out-null
+            } -ArgumentList $ProcessOutputLogPath
+        }
+
+        if (Invoke-Command -Session $Session -ScriptBlock {
+                Param($ProcessErrorLogPath)
+                Test-Path -Path $ProcessErrorLogPath
+            } -ArgumentList $ProcessErrorLogPath) {
+            Copy-Item `
+                -FromSession $Session `
+                -Path $ProcessErrorLogPath `
+                -Destination $ProcessErrorLogDestination `
+                -Force `
+                -Confirm:$false | out-null
+
+            Invoke-Command -Session $Session -ScriptBlock {
+                Param($ProcessErrorLogPath)
+                Remove-Item -Path $ProcessErrorLogPath -Force | out-null
+            } -ArgumentList $ProcessErrorLogPath
+        }
+    } else {
+        if (Test-Path -Path $ProcessOutputLogPath) {
+            Copy-Item `
+                -Path $ProcessOutputLogPath `
+                -Destination $ProcessOutputLogDestination `
+                -Force `
+                -Confirm:$false | out-null
+            Remove-Item -Path $ProcessOutputLogPath -Force | out-null
+        }
+
+        if (Test-Path -Path $ProcessErrorLogPath) {
+            Copy-Item `
+                -Path $ProcessErrorLogPath `
+                -Destination $ProcessErrorLogDestination `
+                -Force `
+                -Confirm:$false | out-null
+            Remove-Item -Path $ProcessErrorLogPath -Force | out-null
+        }
+    }
+
+    if ($ReturnValue.result) {
         Win-DebugTimestamp -output (
-            "{0}: Get error log of the process > `r`n{1}" -f $LogKeyWord, $ProcessErrorLog
+            "The process({0}) ---------------------- passed" -f $keyWords
+        )
+    } else {
+        if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
+            Win-DebugTimestamp -output (
+                "{0}: Get output log of the process > `r`n{1}" -f $keyWords, $ProcessOutputLog
+            )
+        }
+
+        if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+            Win-DebugTimestamp -output (
+                "{0}: Get error log of the process > `r`n{1}" -f $keyWords, $ProcessErrorLog
+            )
+        }
+
+        Win-DebugTimestamp -output (
+            "The process({0}) ---------------------- failed > {1}" -f $keyWords, $ReturnValue.error
         )
     }
 
@@ -2452,8 +2576,6 @@ function WBase-CheckOutputLog
             $ReturnValue.error = "process_error"
         }
     } else {
-        Win-DebugTimestamp -output ("{0}: Output log > {1}" -f $LogKeyWord, $TestOutputLog)
-
         $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $TestOutputLog
         if ($CheckOutputFlag) {
             if ([String]::IsNullOrEmpty($keyWords)) {
@@ -2476,7 +2598,6 @@ function WBase-CheckOutputLog
                 }
             }
         } else {
-            Win-DebugTimestamp -output ("{0}: The test is failed" -f $LogKeyWord)
             $ReturnValue.result = $false
             $ReturnValue.error = "test_failed"
         }
@@ -2516,6 +2637,10 @@ function WBase-CheckOutputLogError
         if ($_ -match "failed") {
             $ReturnValue = $false
         }
+    }
+
+    if (-not $ReturnValue) {
+        Win-DebugTimestamp -output ("Get error in the output log > {0}" -f $OutputLog)
     }
 
     return $ReturnValue
@@ -2846,33 +2971,57 @@ function WBase-CheckOutputFile
                 -Session $Session | out-null
 
             ForEach ($TestParcompOutFile in $TestParcompOutFileList) {
+                $TestdeCompressOutputLogFile = "{0}\\{1}" -f
+                    $TestParcompOutFile.path,
+                    $ParcompOpts.OutputLog
+                $TestdeCompressErrorLogFile = "{0}\\{1}" -f
+                    $TestParcompOutFile.path,
+                    $ParcompOpts.ErrorLog
+
                 if ($Remote) {
-                    $TestParcompOutFileArray = WBase-GetOutputFile `
-                        -TestPath $TestParcompOutFile.path `
-                        -FileName $ParcompOpts.OutputFileName `
+                    $CheckOutput = WBase-CheckOutputLog `
+                        -TestOutputLog $TestdeCompressOutputLogFile `
+                        -TestErrorLog $TestdeCompressErrorLogFile `
+                        -Session $Session `
                         -Remote $true `
-                        -Session $Session
-                    $TestdeCompressOutFile = "{0}\\{1}" -f
-                        $TestParcompOutFileArray.path,
-                        $TestParcompOutFileArray.name
-
-                    $TestdeCompressOutFileMD5 = Invoke-Command -Session $Session -ScriptBlock {
-                        Param($TestdeCompressOutFile)
-                        certutil -hashfile $TestdeCompressOutFile MD5
-                    } -ArgumentList $TestdeCompressOutFile
+                        -keyWords "Mbps"
+                    if ($CheckOutput.result) {
+                        $TestParcompOutFileArray = WBase-GetOutputFile `
+                            -TestPath $TestParcompOutFile.path `
+                            -FileName $ParcompOpts.OutputFileName `
+                            -Remote $true `
+                            -Session $Session
+                        $TestdeCompressOutFile = "{0}\\{1}" -f
+                            $TestParcompOutFileArray.path,
+                            $TestParcompOutFileArray.name
+                        $TestdeCompressOutFileMD5 = Invoke-Command -Session $Session -ScriptBlock {
+                            Param($TestdeCompressOutFile)
+                            certutil -hashfile $TestdeCompressOutFile MD5
+                        } -ArgumentList $TestdeCompressOutFile
+                    } else {
+                        $TestdeCompressOutFileMD5 = $CheckOutput.error
+                    }
                 } else {
-                    $TestParcompOutFileArray = WBase-GetOutputFile `
-                        -TestPath $TestParcompOutFile.path `
-                        -FileName $ParcompOpts.OutputFileName `
-                        -Remote $false
-                    $TestdeCompressOutFile = "{0}\\{1}" -f
-                        $TestParcompOutFileArray.path,
-                        $TestParcompOutFileArray.name
-
-                    $TestdeCompressOutFileMD5 = Invoke-Command -ScriptBlock {
-                        Param($TestdeCompressOutFile)
-                        certutil -hashfile $TestdeCompressOutFile MD5
-                    } -ArgumentList $TestdeCompressOutFile
+                    $CheckOutput = WBase-CheckOutputLog `
+                        -TestOutputLog $TestdeCompressOutputLogFile `
+                        -TestErrorLog $TestdeCompressErrorLogFile `
+                        -Remote $false `
+                        -keyWords "Mbps"
+                    if ($CheckOutput.result) {
+                        $TestParcompOutFileArray = WBase-GetOutputFile `
+                            -TestPath $TestParcompOutFile.path `
+                            -FileName $ParcompOpts.OutputFileName `
+                            -Remote $false
+                        $TestdeCompressOutFile = "{0}\\{1}" -f
+                            $TestParcompOutFileArray.path,
+                            $TestParcompOutFileArray.name
+                        $TestdeCompressOutFileMD5 = Invoke-Command -ScriptBlock {
+                            Param($TestdeCompressOutFile)
+                            certutil -hashfile $TestdeCompressOutFile MD5
+                        } -ArgumentList $TestdeCompressOutFile
+                    } else {
+                        $TestdeCompressOutFileMD5 = $CheckOutput.error
+                    }
                 }
 
                 $TestdeCompressOutFileMD5 = $TestdeCompressOutFileMD5[1]
@@ -4058,44 +4207,39 @@ function WBase-Parcomp
         )
 
         if ([String]::IsNullOrEmpty($ParcompPSOut)) {
-            Win-DebugTimestamp -output (
-                "{0}: The parcomp test ({1}) is failed" -f
-                    $LogKeyWord,
-                    $runParcompType
-            )
             $ReturnValue.result = $false
-            $ReturnValue.error = "parcomp_failed"
+            $ReturnValue.error = "no_output"
         } else {
             $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $ParcompPSOut
             if ($CheckOutputFlag) {
                 $TestOps = WBase-GetTestOps -TestOut $ParcompPSOut -keyWords "Mbps"
                 if ([String]::IsNullOrEmpty($TestOps) -or ($TestOps -eq "inf")) {
-                    Win-DebugTimestamp -output (
-                        "{0}: The parcomp test ({1}) is failed" -f
-                            $LogKeyWord,
-                            $runParcompType
-                    )
                     $ReturnValue.result = $false
                     $ReturnValue.error = "get_ops"
                 } else {
-                    Win-DebugTimestamp -output (
-                        "{0}: The parcomp test ({1}) is passed" -f
-                            $LogKeyWord,
-                            $runParcompType
-                    )
                     $ReturnValue.result = $true
                     $ReturnValue.error = "no_error"
                     $ReturnValue.testOps = $TestOps
                 }
             } else {
-                Win-DebugTimestamp -output (
-                    "{0}: The parcomp test ({1}) is failed" -f
-                        $LogKeyWord,
-                        $runParcompType
-                )
                 $ReturnValue.result = $false
                 $ReturnValue.error = "parcomp_failed"
             }
+        }
+
+        if ($ReturnValue.result) {
+            Win-DebugTimestamp -output (
+                "{0}: The parcomp test ({1}) is passed" -f
+                    $LogKeyWord,
+                    $runParcompType
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: The parcomp test ({1}) is failed > {2}" -f
+                    $LogKeyWord,
+                    $runParcompType,
+                    $ReturnValue.error
+            )
         }
     } elseif ($runParcompType -eq "AsJob") {
         # After running this parcomp type, must be check:

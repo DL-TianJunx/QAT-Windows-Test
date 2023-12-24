@@ -301,7 +301,7 @@ $global:BertaENVInit = [hashtable] @{
     LinuxShell = [hashtable] @{
         SourcePath = "\\10.67.115.211\\mountBertaCTL\\LinuxShellCode"
     }
-    TestScriptPath = "\\10.67.115.211\\mountBertaCTL\\QatTestBerta"
+    TestScriptPath = "\\10.67.115.211\\mountBertaCTL\\QAT-Windows-Test"
 }
 
 $global:TestResultToBerta = [hashtable] @{
@@ -393,8 +393,8 @@ $global:LocationInfo = [hashtable] @{
         ExecutingServer = $null
         TargetServer = $null
         PSSessionName = "PSSession_Domain"
-        DriverPath = "C:\Domain_QAT_driver"
-        ResultPath = "C:\Domain_test_result"
+        DriverPath = "{0}\Domain_QAT_driver" -f $STVWinPath
+        ResultPath = "{0}\Domain_test_result" -f $STVWinPath
         S2DStorage = "\\QatServer305\vhd"
     }
 }

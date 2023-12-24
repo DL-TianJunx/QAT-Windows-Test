@@ -286,6 +286,9 @@ function HV-GenerateVMVFConfig
                 $VMVFOSName = "{0}vm_64vf_{1}" -f $VMNumber, $VMOS
                 $ReturnValue += $VMVFOSName
             }
+        } elseif ($ConfigType -eq "Gtest") {
+            $VMVFOSName = "3vm_{0}vf_{1}" -f $LocationInfo.PF.Number, $VMOS
+            $ReturnValue += $VMVFOSName
         } else {
             throw ("Can not generate VMVFOS configs > {0}" -f $ConfigType)
         }
@@ -590,6 +593,12 @@ function HV-CreateVM
             -ProcessorCount $LocationInfo.VM.CPU `
             -AutomaticStopAction TurnOff `
             -ErrorAction Stop | out-null
+
+        $VMDvd = Get-VMDvdDrive -VMName $VMName
+        Remove-VMDvdDrive `
+            -VMName $VMName `
+            -ControllerNumber $VMDvd.ControllerNumber `
+            -ControllerLocation $VMDvd.ControllerLocation | out-null
 
         if ($LocationInfo.VM.HyperVGeneration -eq 2) {
             Set-VMFirmware `

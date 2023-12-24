@@ -48,10 +48,10 @@ function Domain-PSSessionCreate
         Invoke-Command -Session $Session -ScriptBlock {
             $ModuleStatus = Get-Module -Name "WinBase"
             if ([String]::IsNullOrEmpty($ModuleStatus)) {
-                Import-Module "C:\QatTestBerta\lib\WinBase.psm1" -Force -DisableNameChecking
+                Import-Module "C:\QAT-Windows-Test\lib\WinBase.psm1" -Force -DisableNameChecking
             }
 
-            Set-Location "C:\QatTestBerta"
+            Set-Location "C:\QAT-Windows-Test"
         }
     }
 
@@ -676,6 +676,8 @@ function Domain-ProcessParcomp
         error = "no_error"
     }
 
+    Start-Sleep -Seconds 5
+
     WBase-GetInfoFile | out-null
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
@@ -711,28 +713,6 @@ function Domain-ProcessParcomp
 
     # Run parcomp test
     $ProcessCount = 0
-    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
-        $ProcessCount += 1
-        $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
-        $CompressTestResult = WBase-Parcomp `
-            -Remote $true `
-            -Session $Session `
-            -deCompressFlag $false `
-            -CompressProvider $CompressProvider `
-            -deCompressProvider $deCompressProvider `
-            -QatCompressionType $QatCompressionType `
-            -Level $Level `
-            -Chunk $Chunk `
-            -blockSize $blockSize `
-            -numThreads $numThreads `
-            -numIterations $numIterations `
-            -ParcompType $ParcompType `
-            -runParcompType $runParcompType `
-            -TestPath $CompressTestPath `
-            -TestFileType $TestFileType `
-            -TestFileSize $TestFileSize
-    }
-
     if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
         $ProcessCount += 1
         $deCompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.deCompressPathName
@@ -751,6 +731,28 @@ function Domain-ProcessParcomp
             -ParcompType $ParcompType `
             -runParcompType $runParcompType `
             -TestPath $deCompressTestPath `
+            -TestFileType $TestFileType `
+            -TestFileSize $TestFileSize
+    }
+
+    if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+        $ProcessCount += 1
+        $CompressTestPath = "{0}\\{1}" -f $STVWinPath, $ParcompOpts.CompressPathName
+        $CompressTestResult = WBase-Parcomp `
+            -Remote $true `
+            -Session $Session `
+            -deCompressFlag $false `
+            -CompressProvider $CompressProvider `
+            -deCompressProvider $deCompressProvider `
+            -QatCompressionType $QatCompressionType `
+            -Level $Level `
+            -Chunk $Chunk `
+            -blockSize $blockSize `
+            -numThreads $numThreads `
+            -numIterations $numIterations `
+            -ParcompType $ParcompType `
+            -runParcompType $runParcompType `
+            -TestPath $CompressTestPath `
             -TestFileType $TestFileType `
             -TestFileSize $TestFileSize
     }
@@ -1145,6 +1147,7 @@ function Domain-LiveMParcomp
 
     # Run parcomp test as process
     $VMNameList | ForEach-Object {
+        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
         $ParcompProcessArgs = "Domain-ProcessParcomp -VMNameSuffix {0}" -f $_
         $ParcompProcessArgs = "{0} -CompressType {1}" -f $ParcompProcessArgs, $CompressType
         $ParcompProcessArgs = "{0} -CompressProvider {1}" -f $ParcompProcessArgs, $CompressProvider
@@ -1157,7 +1160,7 @@ function Domain-LiveMParcomp
         $ParcompProcessArgs = "{0} -numIterations {1}" -f $ParcompProcessArgs, $numIterations
         $ParcompProcessArgs = "{0} -TestFileType {1}" -f $ParcompProcessArgs, $TestFileType
         $ParcompProcessArgs = "{0} -TestFileSize {1}" -f $ParcompProcessArgs, $TestFileSize
-        $ParcompkeyWords = "{0}_{1}" -f $CompressType, $_
+        $ParcompkeyWords = "livemigration_parcomp_{0}" -f $_
         $ParcompProcessArgs = "{0} -keyWords {1}" -f $ParcompProcessArgs, $ParcompkeyWords
         # $ParcompProcessArgs = "{0} -isDomain {1}" -f $ParcompProcessArgs, $isDomain
 
@@ -1209,30 +1212,17 @@ function Domain-LiveMParcomp
 
     # Check output and error log for parcomp process
     $VMNameList | ForEach-Object {
-        $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $_
-        Win-DebugTimestamp -output (
-            "{0}: The LiveMigration parcomp process ----------------" -f $vmName
-        )
-
+        $ParcompkeyWords = "livemigration_parcomp_{0}" -f $_
         $ParcompProcessResult = WBase-CheckProcessOutput `
-            -ProcessOutputLog $ParcompProcessList[$_].Output `
-            -ProcessErrorLog $ParcompProcessList[$_].Error `
-            -ProcessResult $ParcompProcessList[$_].Result `
-            -Remote $false
+            -ProcessOutputLogPath $ParcompProcessList[$_].Output `
+            -ProcessErrorLogPath $ParcompProcessList[$_].Error `
+            -ProcessResultPath $ParcompProcessList[$_].Result `
+            -Remote $false `
+            -keyWords $ParcompkeyWords
 
         if ($ReturnValue.result) {
             $ReturnValue.result = $ParcompProcessResult.result
             $ReturnValue.error = $ParcompProcessResult.error
-        }
-
-        if ($ParcompProcessResult.result) {
-            Win-DebugTimestamp -output (
-                "{0}: The LiveMigration parcomp process ---------------- true" -f $vmName
-            )
-        } else {
-            Win-DebugTimestamp -output (
-                "{0}: The LiveMigration parcomp process ---------------- false" -f $vmName
-            )
         }
     }
 

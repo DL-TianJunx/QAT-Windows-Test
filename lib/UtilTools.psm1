@@ -517,6 +517,168 @@ function UT-CheckDriverVerifier
     return $ReturnValue
 }
 
+# About service
+function UT-CreateService
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$ServiceName,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ServiceFile,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ServiceCert,
+
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [object]$Session = $null
+    )
+
+    if ($Remote) {
+        $LogKeyWord = $Session.Name
+    } else {
+        $LogKeyWord = "Host"
+    }
+
+    Win-DebugTimestamp -output (
+        "{0}: Create server '{1}' from {2}'" -f
+            $LogKeyWord,
+            $ServiceName,
+            $ServiceFile
+    )
+
+    $ScriptBlock = {
+        Param($ServiceName, $ServiceFile)
+        $ReturnValue = $false
+
+        $ServiceFileName = Split-Path -Path $ServiceFile -Leaf
+        $LocalServiceFile = "C:\Windows\\System32\\drivers\\{0}" -f $ServiceFileName
+        if (-not (Test-Path -Path $LocalServiceFile)) {
+            Copy-Item -Path $ServiceFile -Destination $LocalServiceFile
+        }
+
+        $GetServiceError = $null
+        $ServiceOb = Get-Service `
+            -Name $ServiceName `
+            -ErrorAction SilentlyContinue `
+            -ErrorVariable GetServiceError
+        if ([String]::IsNullOrEmpty($GetServiceError)) {
+            if ($ServiceOb.Status -eq "Running") {
+                Stop-Service -Name $ServiceName | out-null
+            }
+
+            Remove-Service -Name $ServiceName | out-null
+        }
+
+        sc create qzfor type=kernel start=demand binpath=$LocalServiceFile
+        Start-Service -Name $ServiceName | out-null
+
+        $GetServiceError = $null
+        $ServiceOb = Get-Service `
+            -Name $ServiceName `
+            -ErrorAction SilentlyContinue `
+            -ErrorVariable GetServiceError
+        if ([String]::IsNullOrEmpty($GetServiceError)) {
+            $ReturnValue = $true
+        }
+
+        return $ReturnValue
+    }
+
+    if ($Remote) {
+        UT-SetCertificate `
+            -CertFile $ServiceCert `
+            -Remote $Remote `
+            -Session $Session | out-null
+
+        $CreateStatus = Invoke-Command `
+            -Session $Session `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ServiceName, $ServiceFile
+    } else {
+        UT-SetCertificate `
+            -CertFile $ServiceCert `
+            -Remote $Remote | out-null
+
+        $CreateStatus = Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ServiceName, $ServiceFile
+    }
+
+    if ($CreateStatus) {
+        Win-DebugTimestamp -output (
+            "{0}: Create server is successful" -f $LogKeyWord
+        )
+    } else {
+        Win-DebugTimestamp -output (
+            "{0}: Create server is unsuccessful" -f $LogKeyWord
+        )
+    }
+}
+
+function UT-RemoveService
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]$ServiceName,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ServiceFile,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ServiceCert,
+
+        [Parameter(Mandatory=$True)]
+        [bool]$Remote,
+
+        [object]$Session = $null
+    )
+
+    $ScriptBlock = {
+        Param($ServiceName, $ServiceFile)
+
+        $GetServiceError = $null
+        $ServiceOb = Get-Service `
+            -Name $ServiceName `
+            -ErrorAction SilentlyContinue `
+            -ErrorVariable GetServiceError
+        if ([String]::IsNullOrEmpty($GetServiceError)) {
+            if ($ServiceOb.Status -eq "Running") {
+                Stop-Service -Name $ServiceName | out-null
+            }
+            Remove-Service -Name $ServiceName | out-null
+        }
+
+        $ServiceFileName = Split-Path -Path $ServiceFile -Leaf
+        $LocalServiceFile = "C:\Windows\\System32\\drivers\\{0}" -f $ServiceFileName
+        if (Test-Path -Path $LocalServiceFile) {
+            Get-Item -Path $LocalServiceFile | Remove-Item -Force
+        }
+    }
+
+    if ($Remote) {
+        Invoke-Command `
+            -Session $Session `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ServiceName, $ServiceFile | out-null
+
+        UT-SetCertificate `
+            -CertFile $ServiceCert `
+            -Remote $Remote `
+            -Session $Session | out-null
+    } else {
+        Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ServiceName, $ServiceFile | out-null
+
+        UT-SetCertificate `
+            -CertFile $ServiceCert `
+            -Remote $Remote | out-null
+    }
+}
+
 # About bcdedit
 function UTSetBCDEDITValue
 {
