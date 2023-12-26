@@ -68,6 +68,7 @@ function WBase-ReturnFilesInit
     Set-Variable -Name "WinPowerShellLogFile" -Value ("{0}\\STVTest-ps.log" -f $BertaResultPath) -Scope global
     Set-Variable -Name "WinTestResultFile" -Value ("{0}\\{1}" -f $BertaResultPath, $ResultFile) -Scope global
     Set-Variable -Name "WinTestResultCsv" -Value ("{0}\\result.csv" -f $BertaResultPath) -Scope global
+    Set-Variable -Name "WinTestProcessPath" -Value ("{0}\\Process" -f $BertaResultPath) -Scope global
     $LocationInfo.WriteLogToFile = $true
 
     if (Test-Path -Path $WinPowerShellLogFile) {
@@ -114,6 +115,16 @@ function WBase-ReturnFilesInit
         Get-Item -Path $WinTestResultCsv | Remove-Item -Recurse
     }
     New-Item -Path $BertaResultPath -Name "result.csv" -ItemType "file" | out-null
+
+    if (Test-Path -Path $WinTestProcessPath) {
+        Remove-Item `
+            -Path $WinTestProcessPath `
+            -Recurse `
+            -Force `
+            -Confirm:$false `
+            -ErrorAction Stop | out-null
+    }
+    New-Item -Path $WinTestProcessPath -ItemType Directory | out-null
 }
 
 function WBase-WriteTestResult
@@ -932,9 +943,15 @@ function WBase-CheckDriverHVMode
         $ReturnValue = $false
     }
 
-    Win-DebugTimestamp -output (
-        "Host: Double check QAT driver with HVMode > {0}" -f $ReturnValue
-    )
+    if ($ReturnValue) {
+        Win-DebugTimestamp -output (
+            "Host: Double check QAT driver with HVMode > passed"
+        )
+    } else {
+        Win-DebugTimestamp -output (
+            "Host: Double check QAT driver with HVMode > failed"
+        )
+    }
 
     return $ReturnValue
 }
@@ -1719,9 +1736,15 @@ function WBase-DoubleCheckDriver
         $returnValue = $false
     }
 
-    Win-DebugTimestamp -output (
-        "{0}: Double check IcpQat file > {1}" -f $LogKeyWord, $returnValue
-    )
+    if ($returnValue) {
+        Win-DebugTimestamp -output (
+            "{0}: Double check IcpQat file > passed" -f $LogKeyWord
+        )
+    } else {
+        Win-DebugTimestamp -output (
+            "{0}: Double check IcpQat file > failed" -f $LogKeyWord
+        )
+    }
 
     return $returnValue
 }
@@ -1835,13 +1858,15 @@ function WBase-StartProcess
     Win-DebugTimestamp -output ("{0}: Process args > {1}" -f $keyWords, $ProcessArgs)
 
     $ScriptBlock = {
-        Param($ProcessFilePath, $ProcessArgs, $keyWords, $LocalProcessPath)
-        $ReturnValue = [hashtable] @{
-            ID = $null
-            Output = $null
-            Error = $null
-            Result = $null
-        }
+        Param(
+            $ProcessFilePath,
+            $ProcessArgs,
+            $ProcessOutputLogPath,
+            $ProcessErrorLogPath,
+            $ProcessResultPath
+        )
+
+        $ReturnValue = $null
 
         if ($ProcessFilePath -eq "pwsh") {
             $ProcessCommandFilePath = "C:\Program Files\PowerShell\7\pwsh.exe"
@@ -1855,8 +1880,6 @@ function WBase-StartProcess
             $ProcessCommandArgs = $ProcessArgs
         }
 
-        $ProcessOutputLogPath = "{0}\\ProcessOutputLog_{1}.txt" -f $LocalProcessPath, $keyWords
-        $ReturnValue.Output = $ProcessOutputLogPath
         if (Test-Path -Path $ProcessOutputLogPath) {
             Remove-Item `
                 -Path $ProcessOutputLogPath `
@@ -1865,8 +1888,6 @@ function WBase-StartProcess
                 -ErrorAction Stop | out-null
         }
 
-        $ProcessErrorLogPath = "{0}\\ProcessErrorLog_{1}.txt" -f $LocalProcessPath, $keyWords
-        $ReturnValue.Error = $ProcessErrorLogPath
         if (Test-Path -Path $ProcessErrorLogPath) {
             Remove-Item `
                 -Path $ProcessErrorLogPath `
@@ -1875,9 +1896,6 @@ function WBase-StartProcess
                 -ErrorAction Stop | out-null
         }
 
-        $ProcessResultName = "ProcessResult_{0}.json" -f $keyWords
-        $ProcessResultPath = "{0}\\{1}" -f $LocalProcessPath, $ProcessResultName
-        $ReturnValue.Result = $ProcessResultPath
         if (Test-Path -Path $ProcessResultPath) {
             Remove-Item `
                 -Path $ProcessResultPath `
@@ -1885,7 +1903,9 @@ function WBase-StartProcess
                 -Confirm:$false `
                 -ErrorAction Stop | out-null
         }
-        New-Item -Path $LocalProcessPath -Name $ProcessResultName -ItemType "file" | out-null
+        $ProcessResultName = Split-Path -Path $ProcessResultPath -Leaf
+        $ProcessResultPathName = Split-Path -Path $ProcessResultPath
+        New-Item -Path $ProcessResultPathName -Name $ProcessResultName -ItemType "file" | out-null
 
         $ProcessInfo = Start-Process -FilePath $ProcessCommandFilePath `
             -ArgumentList $ProcessCommandArgs `
@@ -1900,22 +1920,72 @@ function WBase-StartProcess
             -ErrorAction SilentlyContinue `
             -ErrorVariable GetProcessError
         if ([String]::IsNullOrEmpty($GetProcessError)) {
-            $ReturnValue.ID = [int]($ProcessInfo.ID)
+            $ReturnValue = [int]($ProcessInfo.ID)
         }
 
         return $ReturnValue
     }
 
     if ($Remote) {
-        $ReturnValue = Invoke-Command `
+        $ProcessOutputLogPath = "{0}\\{1}_Output.txt" -f
+            $LocalProcessPath,
+            $keyWords
+        $ProcessErrorLogPath = "{0}\\{1}_Error.txt" -f
+            $LocalProcessPath,
+            $keyWords
+        $ProcessResultPath = "{0}\\{1}_Result.json" -f
+            $LocalProcessPath,
+            $keyWords
+        $ProcessID = Invoke-Command `
             -Session $Session `
             -ScriptBlock $ScriptBlock `
-            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords, $LocalProcessPath
+            -ArgumentList $ProcessFilePath,
+                          $ProcessArgs,
+                          $ProcessOutputLogPath,
+                          $ProcessErrorLogPath,
+                          $ProcessResultPath
     } else {
-        $ReturnValue = Invoke-Command `
+        if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+            $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+        }
+
+        if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+            $ProcessOutputLogPath = "{0}\\{1}_Output.txt" -f
+                $WinTestProcessPath,
+                $keyWords
+            $ProcessErrorLogPath = "{0}\\{1}_Error.txt" -f
+                $WinTestProcessPath,
+                $keyWords
+            $ProcessResultPath = "{0}\\{1}_Result.json" -f
+                $WinTestProcessPath,
+                $keyWords
+        } else {
+            $ProcessOutputLogPath = "{0}\\{1}_{2}_Output.txt" -f
+                $WinTestProcessPath,
+                $keyWords,
+                $LocationInfo.TestCaseName
+            $ProcessErrorLogPath = "{0}\\{1}_{2}_Error.txt" -f
+                $WinTestProcessPath,
+                $keyWords,
+                $LocationInfo.TestCaseName
+            $ProcessResultPath = "{0}\\{1}_{2}_Result.json" -f
+                $WinTestProcessPath,
+                $keyWords,
+                $LocationInfo.TestCaseName
+        }
+        $ProcessID = Invoke-Command `
             -ScriptBlock $ScriptBlock `
-            -ArgumentList $ProcessFilePath, $ProcessArgs, $keyWords, $LocalProcessPath
+            -ArgumentList $ProcessFilePath,
+                          $ProcessArgs,
+                          $ProcessOutputLogPath,
+                          $ProcessErrorLogPath,
+                          $ProcessResultPath
     }
+
+    $ReturnValue.ID = $ProcessID
+    $ReturnValue.Output = $ProcessOutputLogPath
+    $ReturnValue.Error = $ProcessErrorLogPath
+    $ReturnValue.Result = $ProcessResultPath
 
     Win-DebugTimestamp -output ("{0}: Process output file > {1}" -f $keyWords, $ReturnValue.Output)
     Win-DebugTimestamp -output ("{0}: Process error file > {1}" -f $keyWords, $ReturnValue.Error)
@@ -2180,40 +2250,27 @@ function WBase-CheckProcessOutput
 
         [object]$Session = $null,
 
-        [bool]$CheckResultFlag = $true,
+        [bool]$CheckResultFlag = $false,
 
-        [string]$ProcessResultPath = $null
+        [string]$ProcessResultPath = $null,
+
+        [string]$CheckResultType = "Base"
     )
 
     $ReturnValue = [hashtable] @{
         result = $true
         error = "no_error"
-        testResult = $null
     }
 
-    if ($Remote) {
-        $ProcessOutputLog = Invoke-Command -Session $Session -ScriptBlock {
-            Param($ProcessOutputLogPath)
-            if (Test-Path -Path $ProcessOutputLogPath) {
-                $ReturnValue = Get-Content -Path $ProcessOutputLogPath -Raw
-            } else {
-                $ReturnValue = $null
-            }
+    # Check output and error log
+    $ScriptBlock = {
+        Param($ProcessOutputLogPath, $ProcessErrorLogPath)
 
-            return $ReturnValue
-        } -ArgumentList $ProcessOutputLogPath
+        $ReturnValue = [hashtable] @{
+            result = $true
+            error = "no_error"
+        }
 
-        $ProcessErrorLog = Invoke-Command -Session $Session -ScriptBlock {
-            Param($ProcessErrorLogPath)
-            if (Test-Path -Path $ProcessErrorLogPath) {
-                $ReturnValue = Get-Content -Path $ProcessErrorLogPath -Raw
-            } else {
-                $ReturnValue = $null
-            }
-
-            return $ReturnValue
-        } -ArgumentList $ProcessErrorLogPath
-    } else {
         if (Test-Path -Path $ProcessOutputLogPath) {
             $ProcessOutputLog = Get-Content -Path $ProcessOutputLogPath -Raw
         } else {
@@ -2225,92 +2282,114 @@ function WBase-CheckProcessOutput
         } else {
             $ProcessErrorLog = $null
         }
-    }
 
-    if ($CheckResultFlag) {
-        if ([System.IO.File]::Exists($ProcessResultPath)) {
-            $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $ProcessResultPath
-            if ([String]::IsNullOrEmpty($ProcessResultHashtable)) {
-                $ReturnValue.result = $false
-                $ReturnValue.error = "no_test_result"
+        if ([String]::IsNullOrEmpty($ProcessOutputLog)) {
+            if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
+                if ($ReturnValue.result) {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "no_output"
+                }
             } else {
-                $ReturnValue.result = $ProcessResultHashtable.result
-                $ReturnValue.error = $ProcessResultHashtable.error
-                $ReturnValue.testResult = $ProcessResultHashtable
+                if ($ReturnValue.result) {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "process_error"
+                }
             }
         } else {
-            $ReturnValue.result = $false
-            $ReturnValue.error = "no_result_file"
-        }
-    }
-
-    if ([String]::IsNullOrEmpty($ProcessOutputLog)) {
-        if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
-            if ($ReturnValue.result) {
-                $ReturnValue.result = $false
-                $ReturnValue.error = "no_output"
-            }
-        } else {
-            if ($ReturnValue.result) {
-                $ReturnValue.result = $false
-                $ReturnValue.error = "process_error"
+            if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+                if ($ReturnValue.result) {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "process_error"
+                }
             }
         }
-    } else {
-        if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
-            if ($ReturnValue.result) {
-                $ReturnValue.result = $false
-                $ReturnValue.error = "process_error"
-            }
-        }
-    }
 
-    # Copy outputlog and errorlog files to BertaResultPath
-    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
-        $ProcessOutputLogPathName = Split-Path -Path $ProcessOutputLogPath -Leaf
-        $ProcessErrorLogPathName = Split-Path -Path $ProcessErrorLogPath -Leaf
-    } else {
-        $ProcessOutputLogPathName = "ProcessOutputLog_{0}_{1}.txt" -f
-            $keyWords,
-            $LocationInfo.TestCaseName
-        $ProcessErrorLogPathName = "ProcessErrorLog_{0}_{1}.txt" -f
-            $keyWords,
-            $LocationInfo.TestCaseName
+        return $ReturnValue
     }
-
-    $BertaResultProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
-    if (-not (Test-Path -Path $BertaResultProcessPath)) {
-        New-Item -Path $BertaResultProcessPath -ItemType Directory | out-null
-    }
-
-    $ProcessOutputLogDestination = "{0}\\{1}" -f
-        $BertaResultProcessPath,
-        $ProcessOutputLogPathName
-    if (Test-Path -Path $ProcessOutputLogDestination) {
-        Remove-Item -Path $ProcessOutputLogDestination -Force | out-null
-    }
-
-    $ProcessErrorLogDestination = "{0}\\{1}" -f
-        $BertaResultProcessPath,
-        $ProcessErrorLogPathName
-    if (Test-Path -Path $ProcessErrorLogDestination) {
-        Remove-Item -Path $ProcessErrorLogDestination -Force | out-null
-    }
-
-    Win-DebugTimestamp -output (
-        "{0}: Move output log from '{1}' to '{2}'" -f
-            $keyWords,
-            $ProcessOutputLogPath,
-            $ProcessOutputLogDestination
-    )
-    Win-DebugTimestamp -output (
-        "{0}: Move error log from '{1}' to '{2}'" -f
-            $keyWords,
-            $ProcessErrorLogPath,
-            $ProcessErrorLogDestination
-    )
 
     if ($Remote) {
+        $ReturnValue = Invoke-Command `
+            -Session $Session `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ProcessOutputLogPath, $ProcessErrorLogPath
+    } else {
+        $ReturnValue = Invoke-Command `
+            -ScriptBlock $ScriptBlock `
+            -ArgumentList $ProcessOutputLogPath, $ProcessErrorLogPath
+    }
+
+    # Check test result
+    if ($CheckResultFlag) {
+        if ($CheckResultType -eq "Base") {
+            if ($ReturnValue.result) {
+                if ([System.IO.File]::Exists($ProcessResultPath)) {
+                    $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $ProcessResultPath
+                    if ([String]::IsNullOrEmpty($ProcessResultHashtable)) {
+                        $ReturnValue.result = $false
+                        $ReturnValue.error = "no_test_result"
+                    } else {
+                        $ReturnValue.result = $ProcessResultHashtable.result
+                        $ReturnValue.error = $ProcessResultHashtable.error
+                        $ReturnValue["testResult"] = $ProcessResultHashtable
+                    }
+                } else {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "no_result_file"
+                }
+            }
+        }
+
+        if ($CheckResultType -eq "Gtest") {
+            if ($ReturnValue.result) {
+                if ([System.IO.File]::Exists($ProcessOutputLogPath)) {
+                    if ($Remote) {
+                        $CheckResult = Gtest-GetTestCases `
+                            -TestResultPath $ProcessOutputLogPath `
+                            -Remote $Remote `
+                            -Session $Session
+                    } else {
+                        $CheckResult = Gtest-GetTestCases `
+                            -TestResultPath $ProcessOutputLogPath `
+                            -Remote $Remote
+                    }
+
+                    $ReturnValue.result = $CheckResult.result
+                    $ReturnValue.error = $CheckResult.error
+                    $ReturnValue["testcases"] = $CheckResult.testcases
+                }
+            }
+        }
+    }
+
+    # Copy outputlog and errorlog files to BertaResultPath for remote
+    if ($Remote) {
+        if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+            $ProcessOutputLogPathName = Split-Path -Path $ProcessOutputLogPath -Leaf
+            $ProcessErrorLogPathName = Split-Path -Path $ProcessErrorLogPath -Leaf
+            if (-not [String]::IsNullOrEmpty($ProcessResultPath)) {
+                $ProcessResultPathName = Split-Path -Path $ProcessResultPath -Leaf
+            }
+        } else {
+            $ProcessOutputLogPathName = "{0}_{1}_Output.txt" -f
+                $keyWords,
+                $LocationInfo.TestCaseName
+            $ProcessErrorLogPathName = "{0}_{1}_Error.txt" -f
+                $keyWords,
+                $LocationInfo.TestCaseName
+            if (-not [String]::IsNullOrEmpty($ProcessResultPath)) {
+                $ProcessResultPathName = "{0}_{1}_Result.json" -f
+                    $keyWords,
+                    $LocationInfo.TestCaseName
+            }
+        }
+
+        $ProcessOutputLogDestination = "{0}\\{1}" -f
+            $WinTestProcessPath,
+            $ProcessOutputLogPathName
+        if (Test-Path -Path $ProcessOutputLogDestination) {
+            Remove-Item -Path $ProcessOutputLogDestination -Force | out-null
+        }
+
         if (Invoke-Command -Session $Session -ScriptBlock {
                 Param($ProcessOutputLogPath)
                 Test-Path -Path $ProcessOutputLogPath
@@ -2326,6 +2405,13 @@ function WBase-CheckProcessOutput
                 Param($ProcessOutputLogPath)
                 Remove-Item -Path $ProcessOutputLogPath -Force | out-null
             } -ArgumentList $ProcessOutputLogPath
+        }
+
+        $ProcessErrorLogDestination = "{0}\\{1}" -f
+            $WinTestProcessPath,
+            $ProcessErrorLogPathName
+        if (Test-Path -Path $ProcessErrorLogDestination) {
+            Remove-Item -Path $ProcessErrorLogDestination -Force | out-null
         }
 
         if (Invoke-Command -Session $Session -ScriptBlock {
@@ -2344,43 +2430,69 @@ function WBase-CheckProcessOutput
                 Remove-Item -Path $ProcessErrorLogPath -Force | out-null
             } -ArgumentList $ProcessErrorLogPath
         }
-    } else {
-        if (Test-Path -Path $ProcessOutputLogPath) {
-            Copy-Item `
-                -Path $ProcessOutputLogPath `
-                -Destination $ProcessOutputLogDestination `
-                -Force `
-                -Confirm:$false | out-null
-            Remove-Item -Path $ProcessOutputLogPath -Force | out-null
+
+        if (-not [String]::IsNullOrEmpty($ProcessResultPath)) {
+            $ProcessResultPathDestination = "{0}\\{1}" -f
+                $WinTestProcessPath,
+                $ProcessResultPathName
+            if (Test-Path -Path $ProcessResultPathDestination) {
+                Remove-Item -Path $ProcessResultPathDestination -Force | out-null
+            }
+
+            if (Invoke-Command -Session $Session -ScriptBlock {
+                    Param($ProcessResultPath)
+                    Test-Path -Path $ProcessResultPath
+                } -ArgumentList $ProcessResultPath) {
+                Copy-Item `
+                    -FromSession $Session `
+                    -Path $ProcessResultPath `
+                    -Destination $ProcessResultPathDestination `
+                    -Force `
+                    -Confirm:$false | out-null
+
+                Invoke-Command -Session $Session -ScriptBlock {
+                    Param($ProcessResultPath)
+                    Remove-Item -Path $ProcessResultPath -Force | out-null
+                } -ArgumentList $ProcessResultPath
+            }
         }
-
-        if (Test-Path -Path $ProcessErrorLogPath) {
-            Copy-Item `
-                -Path $ProcessErrorLogPath `
-                -Destination $ProcessErrorLogDestination `
-                -Force `
-                -Confirm:$false | out-null
-            Remove-Item -Path $ProcessErrorLogPath -Force | out-null
-        }
-    }
-
-    if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
-        Win-DebugTimestamp -output (
-            "{0}: Get output log of the process > `r`n{1}" -f $keyWords, $ProcessOutputLog
-        )
-    }
-
-    if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
-        Win-DebugTimestamp -output (
-            "{0}: Get error log of the process > `r`n{1}" -f $keyWords, $ProcessErrorLog
-        )
     }
 
     if ($ReturnValue.result) {
+        if ($Remote) {
+            Win-DebugTimestamp -output (
+                "For more info, please double check output log > {0}" -f $ProcessOutputLogDestination
+            )
+
+            Win-DebugTimestamp -output (
+                "For more info, please double check error log > {0}" -f $ProcessErrorLogDestination
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "For more info, please double check output log > {0}" -f $ProcessOutputLogPath
+            )
+
+            Win-DebugTimestamp -output (
+                "For more info, please double check error log > {0}" -f $ProcessErrorLogPath
+            )
+        }
+
         Win-DebugTimestamp -output (
             "The process({0}) ---------------------- passed" -f $keyWords
         )
     } else {
+        if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
+            Win-DebugTimestamp -output (
+                "{0}: Get output log of the process > `r`n{1}" -f $keyWords, $ProcessOutputLog
+            )
+        }
+
+        if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+            Win-DebugTimestamp -output (
+                "{0}: Get error log of the process > `r`n{1}" -f $keyWords, $ProcessErrorLog
+            )
+        }
+
         Win-DebugTimestamp -output (
             "The process({0}) ---------------------- failed > {1}" -f $keyWords, $ReturnValue.error
         )

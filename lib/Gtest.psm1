@@ -479,203 +479,6 @@ function Gtest-GetTestCases
     return $ReturnValue
 }
 
-function Gtest-CheckProcessOutput
-{
-    Param(
-        [Parameter(Mandatory=$True)]
-        [string]$ProcessOutputLogPath,
-
-        [Parameter(Mandatory=$True)]
-        [string]$ProcessErrorLogPath,
-
-        [Parameter(Mandatory=$True)]
-        [string]$keyWords,
-
-        [Parameter(Mandatory=$True)]
-        [bool]$Remote,
-
-        [object]$Session = $null
-    )
-
-    $ReturnValue = [hashtable] @{
-        result = $true
-        error = "no_error"
-        testcases = [System.Array] @()
-    }
-
-    $ScriptBlock = {
-        Param($ProcessOutputLogPath, $ProcessErrorLogPath)
-
-        $ReturnValue = [hashtable] @{
-            result = $true
-            error = "no_error"
-        }
-
-        if (Test-Path -Path $ProcessOutputLogPath) {
-            $ProcessOutputLog = Get-Content -Path $ProcessOutputLogPath -Raw
-        } else {
-            $ProcessOutputLog = $null
-        }
-
-        if (Test-Path -Path $ProcessErrorLogPath) {
-            $ProcessErrorLog = Get-Content -Path $ProcessErrorLogPath -Raw
-        } else {
-            $ProcessErrorLog = $null
-        }
-
-        if ([String]::IsNullOrEmpty($ProcessOutputLog)) {
-            if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
-                if ($ReturnValue.result) {
-                    $ReturnValue.result = $false
-                    $ReturnValue.error = "no_output"
-                }
-            } else {
-                if ($ReturnValue.result) {
-                    $ReturnValue.result = $false
-                    $ReturnValue.error = "process_error"
-                }
-            }
-        } else {
-            if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
-                if ($ReturnValue.result) {
-                    $ReturnValue.result = $false
-                    $ReturnValue.error = "process_error"
-                }
-            }
-        }
-
-        return $ReturnValue
-    }
-
-    if ($Remote) {
-        $CheckResult = Invoke-Command `
-            -Session $Session `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ProcessOutputLogPath, $ProcessErrorLogPath
-    } else {
-        $CheckResult = Invoke-Command `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ProcessOutputLogPath, $ProcessErrorLogPath
-    }
-
-    if ($CheckResult.result) {
-        if ($Remote) {
-            $ReturnValue = Gtest-GetTestCases `
-                -TestResultPath $ProcessOutputLogPath `
-                -Remote $Remote `
-                -Session $Session
-        } else {
-            $ReturnValue = Gtest-GetTestCases `
-                -TestResultPath $ProcessOutputLogPath `
-                -Remote $Remote
-        }
-    } else {
-        $ReturnValue.result = $CheckResult.result
-        $ReturnValue.error = $CheckResult.error
-    }
-
-    # Copy outputlog and errorlog files to BertaResultPath
-    $BertaResultProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
-    if (-not (Test-Path -Path $BertaResultProcessPath)) {
-        New-Item -Path $BertaResultProcessPath -ItemType Directory | out-null
-    }
-
-    $ProcessOutputLogName = Split-Path -Path $ProcessOutputLogPath -Leaf
-    $ProcessOutputLogDestination = "{0}\\{1}" -f
-        $BertaResultProcessPath,
-        $ProcessOutputLogName
-    if (Test-Path -Path $ProcessOutputLogDestination) {
-        Remove-Item -Path $ProcessOutputLogDestination -Force | out-null
-    }
-
-    $ProcessErrorLogName = Split-Path -Path $ProcessErrorLogPath -Leaf
-    $ProcessErrorLogDestination = "{0}\\{1}" -f
-        $BertaResultProcessPath,
-        $ProcessErrorLogName
-    if (Test-Path -Path $ProcessErrorLogDestination) {
-        Remove-Item -Path $ProcessErrorLogDestination -Force | out-null
-    }
-
-    Win-DebugTimestamp -output (
-        "{0}: Move output log from '{1}' to '{2}'" -f
-            $keyWords,
-            $ProcessOutputLogPath,
-            $ProcessOutputLogDestination
-    )
-    Win-DebugTimestamp -output (
-        "{0}: Move error log from '{1}' to '{2}'" -f
-            $keyWords,
-            $ProcessErrorLogPath,
-            $ProcessErrorLogDestination
-    )
-
-    if ($Remote) {
-        if (Invoke-Command -Session $Session -ScriptBlock {
-                Param($ProcessOutputLogPath)
-                Test-Path -Path $ProcessOutputLogPath
-            } -ArgumentList $ProcessOutputLogPath) {
-            Copy-Item `
-                -FromSession $Session `
-                -Path $ProcessOutputLogPath `
-                -Destination $ProcessOutputLogDestination `
-                -Force `
-                -Confirm:$false | out-null
-
-            Invoke-Command -Session $Session -ScriptBlock {
-                Param($ProcessOutputLogPath)
-                Remove-Item -Path $ProcessOutputLogPath -Force | out-null
-            } -ArgumentList $ProcessOutputLogPath
-        }
-
-        if (Invoke-Command -Session $Session -ScriptBlock {
-                Param($ProcessErrorLogPath)
-                Test-Path -Path $ProcessErrorLogPath
-            } -ArgumentList $ProcessErrorLogPath) {
-            Copy-Item `
-                -FromSession $Session `
-                -Path $ProcessErrorLogPath `
-                -Destination $ProcessErrorLogDestination `
-                -Force `
-                -Confirm:$false | out-null
-
-            Invoke-Command -Session $Session -ScriptBlock {
-                Param($ProcessErrorLogPath)
-                Remove-Item -Path $ProcessErrorLogPath -Force | out-null
-            } -ArgumentList $ProcessErrorLogPath
-        }
-    } else {
-        if (Test-Path -Path $ProcessOutputLogPath) {
-            Copy-Item `
-                -Path $ProcessOutputLogPath `
-                -Destination $ProcessOutputLogDestination `
-                -Force `
-                -Confirm:$false | out-null
-            Remove-Item -Path $ProcessOutputLogPath -Force | out-null
-        }
-
-        if (Test-Path -Path $ProcessErrorLogPath) {
-            Copy-Item `
-                -Path $ProcessErrorLogPath `
-                -Destination $ProcessErrorLogDestination `
-                -Force `
-                -Confirm:$false | out-null
-            Remove-Item -Path $ProcessErrorLogPath -Force | out-null
-        }
-    }
-
-    if ($ReturnValue.result) {
-        Win-DebugTimestamp -output (
-            "The process({0}) ---------------------- passed" -f $keyWords
-        )
-    } else {
-        Win-DebugTimestamp -output (
-            "The process({0}) ---------------------- failed > {1}" -f $keyWords, $ReturnValue.error
-        )
-    }
-
-    return $ReturnValue
-}
-
 function Gtest-CollectTestResult
 {
     Param(
@@ -746,9 +549,23 @@ function Gtest-Process
     Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
-
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
+
+    if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+        $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+    }
+
+    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+        $GtestResultPath = "{0}\\{1}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords
+    } else {
+        $GtestResultPath = "{0}\\{1}_{2}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords,
+            $LocationInfo.TestCaseName
+    }
 
     if ($Remote) {
         $LogKeyWord = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
@@ -769,8 +586,6 @@ function Gtest-Process
 
     $ProcessList = [hashtable] @{}
     $GtestArgsArray = [System.Array] @()
-    $GTtstResultName = "ProcessResult_{0}.json" -f $keyWords
-    $GtestResultPath = "{0}\\{1}" -f $LocalProcessPath, $GTtstResultName
 
     if ($TestType -eq "compress_multi_process") {
         $ProcessName = "qatzip_gtest"
@@ -856,20 +671,26 @@ function Gtest-Process
         if ($Remote) {
             $ProcessKeyWords = "Gtest_{0}_{1}" -f $keyWordsTmp, $VMNameSuffix
 
-            $GtestProcessResult = Gtest-CheckProcessOutput `
+            $GtestProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$ProcessKeyWords].Output `
                 -ProcessErrorLogPath $ProcessList[$ProcessKeyWords].Error `
+                -ProcessResultPath $ProcessList[$ProcessKeyWords].Result `
                 -keyWords $ProcessKeyWords `
                 -Remote $Remote `
-                -Session $Session
+                -Session $Session `
+                -CheckResultFlag $true `
+                -CheckResultType "Gtest"
         } else {
             $ProcessKeyWords = "Gtest_{0}_Host" -f $keyWordsTmp
 
-            $GtestProcessResult = Gtest-CheckProcessOutput `
+            $GtestProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$ProcessKeyWords].Output `
                 -ProcessErrorLogPath $ProcessList[$ProcessKeyWords].Error `
+                -ProcessResultPath $ProcessList[$ProcessKeyWords].Result `
                 -keyWords $ProcessKeyWords `
-                -Remote $Remote
+                -Remote $Remote `
+                -CheckResultFlag $true `
+                -CheckResultType "Gtest"
         }
 
         if ($GtestProcessResult.testcases.length -ne 0) {
@@ -928,7 +749,7 @@ function Gtest-Entry
         } else {
             $GtestProcessArgs = "{0} -Remote 0" -f $GtestProcessArgs
         }
-        $GtestProcessKeyWords = "gtest_{0}" -f $_
+        $GtestProcessKeyWords = "Gtest_{0}" -f $_
         $GtestProcessArgs = "{0} -keyWords {1}" -f $GtestProcessArgs, $GtestProcessKeyWords
         if ($ListFlag) {
             $GtestProcessArgs = "{0} -ListFlag 1" -f $GtestProcessArgs
@@ -958,14 +779,16 @@ function Gtest-Entry
 
     # Check output and error log for gtest process
     $PlatformList | ForEach-Object {
-        $GtestProcessKeyWords = "gtest_{0}" -f $_
+        $GtestProcessKeyWords = "Gtest_{0}" -f $_
 
         $GtestResult = WBase-CheckProcessOutput `
             -ProcessOutputLogPath $ProcessList[$_].Output `
             -ProcessErrorLogPath $ProcessList[$_].Error `
             -ProcessResultPath $ProcessList[$_].Result `
             -Remote $false `
-            -keyWords $GtestProcessKeyWords
+            -keyWords $GtestProcessKeyWords `
+            -CheckResultFlag $true `
+            -CheckResultType "Base"
 
         if ($ReturnValue.result) {
             $ReturnValue.result = $GtestResult.result

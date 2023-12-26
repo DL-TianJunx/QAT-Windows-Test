@@ -399,7 +399,7 @@ function WTW-ENVInit
         $VMNameList | ForEach-Object {
             $InitVMProcessArgs = "WTW-ProcessVMInit -VMNameSuffix {0}" -f $_
             $InitVMProcessArgs = "{0} -VHDPath {1}" -f $InitVMProcessArgs, $VHDPath
-            $keyWords = "init_{0}" -f $_
+            $keyWords = "HyperV_init_{0}" -f $_
 
             $InitVMProcess = WBase-StartProcess `
                 -ProcessFilePath "pwsh" `
@@ -422,7 +422,7 @@ function WTW-ENVInit
             -Remote $false | out-null
 
         $VMNameList | ForEach-Object {
-            $keyWords = "init_{0}" -f $_
+            $keyWords = "HyperV_init_{0}" -f $_
             $ProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$_].Output `
                 -ProcessErrorLogPath $ProcessList[$_].Error `
@@ -703,9 +703,23 @@ function WTW-ProcessInstaller
     Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
-
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
+
+    if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+        $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+    }
+
+    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+        $InstallerTestResultPath = "{0}\\{1}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords
+    } else {
+        $InstallerTestResultPath = "{0}\\{1}_{2}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords,
+            $LocationInfo.TestCaseName
+    }
 
     if ($TestType -eq "installer_files") {
         $CheckTypes = [System.Array] @("service", "device", "library")
@@ -722,9 +736,6 @@ function WTW-ProcessInstaller
             "C:\\Program Files\\Intel\Intel(R) QuickAssist Technology\\Compression\\Library\\libqatzip.lib"
         )
     }
-
-    $InstallerTestResultName = "ProcessResult_{0}.json" -f $keyWords
-    $InstallerTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $InstallerTestResultName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
     $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
@@ -841,8 +852,9 @@ function WTW-ProcessInstaller
             }
         }
 
-        $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-        $ReturnValueWrite | Out-File $InstallerTestResultPath -Encoding ascii
+        WBase-WriteHashtableToJsonFile `
+            -Info $ReturnValue `
+            -InfoFilePath $InstallerTestResultPath | out-null
     }
 
     if ($TestType -eq "installer_files") {
@@ -883,10 +895,12 @@ function WTW-ProcessInstaller
             }
         }
 
-        $ReturnValueWrite = $ReturnValue | ConvertTo-Json
-        $ReturnValueWrite | Out-File $InstallerTestResultPath -Encoding ascii
+        WBase-WriteHashtableToJsonFile `
+            -Info $ReturnValue `
+            -InfoFilePath $InstallerTestResultPath | out-null
     }
 
+    # If QAT driver uninstalled, re-install.
     $CheckStatus = WBase-CheckDriverInstalled `
         -Remote $true `
         -Session $Session
@@ -970,7 +984,7 @@ function WTW-Installer
     $VMNameList | ForEach-Object {
         $InstallerTestProcessArgs = "WTW-ProcessInstaller -VMNameSuffix {0}" -f $_
         $InstallerTestProcessArgs = "{0} -TestType {1}" -f $InstallerTestProcessArgs, $TestType
-        $InstallerTestkeyWords = "installer_{0}" -f $_
+        $InstallerTestkeyWords = "Installer_{0}" -f $_
         $InstallerTestProcessArgs = "{0} -keyWords {1}" -f $InstallerTestProcessArgs, $InstallerTestkeyWords
 
         if ($parcompFlag) {
@@ -1005,13 +1019,15 @@ function WTW-Installer
         -Remote $false | out-null
 
     $VMNameList | ForEach-Object {
-        $InstallerTestkeyWords = "installer_{0}" -f $_
+        $InstallerTestkeyWords = "Installer_{0}" -f $_
         $InstallerTestResult = WBase-CheckProcessOutput `
             -ProcessOutputLogPath $InstallerProcessList[$_].Output `
             -ProcessErrorLogPath $InstallerProcessList[$_].Error `
             -ProcessResultPath $InstallerProcessList[$_].Result `
             -Remote $false `
-            -keyWords $InstallerTestkeyWords
+            -keyWords $InstallerTestkeyWords `
+            -CheckResultFlag $true `
+            -CheckResultType "Base"
 
         if ($ReturnValue.install.service.result) {
             $ReturnValue.install.service.result = $InstallerTestResult.testResult.install.service.result
@@ -1143,9 +1159,23 @@ function WTW-ProcessParcomp
     Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
-
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
+
+    if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+        $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+    }
+
+    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+        $ParcompTestResultPath = "{0}\\{1}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords
+    } else {
+        $ParcompTestResultPath = "{0}\\{1}_{2}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords,
+            $LocationInfo.TestCaseName
+    }
 
     if (($TestType -eq "Base_Compat") -or ($TestType -eq "Base_Parameter")) {
         $ParcompType = "Base"
@@ -1157,9 +1187,6 @@ function WTW-ProcessParcomp
         $ParcompType = "Fallback"
         $runParcompType = "Process"
     }
-
-    $ParcompTestResultName = "ProcessResult_{0}.json" -f $keyWords
-    $ParcompTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $ParcompTestResultName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
     $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
@@ -1564,7 +1591,9 @@ function WTW-Parcomp
             -ProcessErrorLogPath $ParcompProcessList[$_].Error `
             -ProcessResultPath $ParcompProcessList[$_].Result `
             -Remote $false `
-            -keyWords $ParcompkeyWords
+            -keyWords $ParcompkeyWords `
+            -CheckResultFlag $true `
+            -CheckResultType "Base"
 
         $TotalOps += $ParcompResult.testResult.testOps
         if ($ReturnValue.result) {
@@ -1672,14 +1701,26 @@ function WTW-ProcessCNGTest
     Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
-
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
 
+    if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+        $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+    }
+
+    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+        $CNGTestResultPath = "{0}\\{1}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords
+    } else {
+        $CNGTestResultPath = "{0}\\{1}_{2}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords,
+            $LocationInfo.TestCaseName
+    }
+
     $CNGTestOutLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.OutputLog
     $CNGTestErrorLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.ErrorLog
-    $CNGTestResultName = "ProcessResult_{0}.json" -f $keyWords
-    $CNGTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $CNGTestResultName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
     $vmName = "{0}_{1}" -f $env:COMPUTERNAME, $VMNameSuffix
@@ -1846,7 +1887,7 @@ function WTW-CNGTest
         $CNGTestProcessArgs = "{0} -numIter {1}" -f $CNGTestProcessArgs, $numIter
         $CNGTestProcessArgs = "{0} -TestPath {1}" -f $CNGTestProcessArgs, $TestPath
         $CNGTestProcessArgs = "{0} -TestType {1}" -f $CNGTestProcessArgs, $TestType
-        $CNGTestkeyWords = "cngtest_{0}" -f $_
+        $CNGTestkeyWords = "CNGtest_{0}" -f $_
         $CNGTestProcessArgs = "{0} -keyWords {1}" -f $CNGTestProcessArgs, $CNGTestkeyWords
 
         # Delete Start Operation Flag file
@@ -1923,13 +1964,15 @@ function WTW-CNGTest
     # Check output and error log for cngtest process
     $TotalOps = 0
     $VMNameList | ForEach-Object {
-        $CNGTestkeyWords = "cngtest_{0}" -f $_
+        $CNGTestkeyWords = "CNGtest_{0}" -f $_
         $CNGTestResult = WBase-CheckProcessOutput `
             -ProcessOutputLogPath $CNGTestProcessList[$_].Output `
             -ProcessErrorLogPath $CNGTestProcessList[$_].Error `
             -ProcessResultPath $CNGTestProcessList[$_].Result `
             -Remote $false `
-            -keyWords $CNGTestkeyWords
+            -keyWords $CNGTestkeyWords `
+            -CheckResultFlag $true `
+            -CheckResultType "Base"
 
         $TotalOps += $CNGTestResult.testResult.testOps
         if ($ReturnValue.result) {

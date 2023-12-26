@@ -686,14 +686,23 @@ function Domain-ProcessParcomp
     $RemoteInfo.WriteLogToConsole = $false
     $RemoteInfo.WriteLogToFile = $false
 
+    if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+        $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+    }
+
+    if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
+        $ParcompTestResultPath = "{0}\\{1}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords
+    } else {
+        $ParcompTestResultPath = "{0}\\{1}_{2}_Result.json" -f
+            $WinTestProcessPath,
+            $keyWords,
+            $LocationInfo.TestCaseName
+    }
+
     $ParcompType = "Fallback"
     $runParcompType = "Process"
-    $ParcompTestResultName = "ProcessResult_{0}.json" -f $keyWords
-    $ParcompTestResultPath = "{0}\\{1}" -f $LocalProcessPath, $ParcompTestResultName
-
-    $DomainPSSession = Domain-PSSessionCreate `
-        -RMName $LocationInfo.Domain.TargetServer `
-        -PSName $LocationInfo.Domain.PSSessionName
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
     $VMName = "{0}_{1}" -f $LocationInfo.Domain.ExecutingServer, $VMNameSuffix
@@ -703,6 +712,10 @@ function Domain-ProcessParcomp
         -PSName $PSSessionName `
         -IsWin $true `
         -CheckFlag $false
+
+    $DomainPSSession = Domain-PSSessionCreate `
+        -RMName $LocationInfo.Domain.TargetServer `
+        -PSName $LocationInfo.Domain.PSSessionName
 
     # Run tracelog
     UT-TraceLogStart -Remote $true -Session $Session | out-null
@@ -1160,7 +1173,7 @@ function Domain-LiveMParcomp
         $ParcompProcessArgs = "{0} -numIterations {1}" -f $ParcompProcessArgs, $numIterations
         $ParcompProcessArgs = "{0} -TestFileType {1}" -f $ParcompProcessArgs, $TestFileType
         $ParcompProcessArgs = "{0} -TestFileSize {1}" -f $ParcompProcessArgs, $TestFileSize
-        $ParcompkeyWords = "livemigration_parcomp_{0}" -f $_
+        $ParcompkeyWords = "LiveMigration_parcomp_{0}" -f $_
         $ParcompProcessArgs = "{0} -keyWords {1}" -f $ParcompProcessArgs, $ParcompkeyWords
         # $ParcompProcessArgs = "{0} -isDomain {1}" -f $ParcompProcessArgs, $isDomain
 
@@ -1212,13 +1225,15 @@ function Domain-LiveMParcomp
 
     # Check output and error log for parcomp process
     $VMNameList | ForEach-Object {
-        $ParcompkeyWords = "livemigration_parcomp_{0}" -f $_
+        $ParcompkeyWords = "LiveMigration_parcomp_{0}" -f $_
         $ParcompProcessResult = WBase-CheckProcessOutput `
             -ProcessOutputLogPath $ParcompProcessList[$_].Output `
             -ProcessErrorLogPath $ParcompProcessList[$_].Error `
             -ProcessResultPath $ParcompProcessList[$_].Result `
             -Remote $false `
-            -keyWords $ParcompkeyWords
+            -keyWords $ParcompkeyWords `
+            -CheckResultFlag $true `
+            -CheckResultType "Base"
 
         if ($ReturnValue.result) {
             $ReturnValue.result = $ParcompProcessResult.result
