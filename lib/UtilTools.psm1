@@ -543,7 +543,7 @@ function UT-CreateService
     }
 
     Win-DebugTimestamp -output (
-        "{0}: Create server '{1}' from {2}'" -f
+        "{0}: Create server '{1}' from '{2}'" -f
             $LogKeyWord,
             $ServiceName,
             $ServiceFile
@@ -636,8 +636,25 @@ function UT-RemoveService
         [object]$Session = $null
     )
 
+    if ($Remote) {
+        $LogKeyWord = $Session.Name
+    } else {
+        $LogKeyWord = "Host"
+    }
+
+    $ServiceFileName = Split-Path -Path $ServiceFile -Leaf
+    $LocalServiceFile = "C:\Windows\\System32\\drivers\\{0}" -f $ServiceFileName
+
+    Win-DebugTimestamp -output (
+        "{0}: Remove server '{1}' and '{2}'" -f
+            $LogKeyWord,
+            $ServiceName,
+            $LocalServiceFile
+    )
+
     $ScriptBlock = {
-        Param($ServiceName, $ServiceFile)
+        Param($ServiceName, $LocalServiceFile)
+        $ReturnValue = $false
 
         $GetServiceError = $null
         $ServiceOb = Get-Service `
@@ -651,31 +668,48 @@ function UT-RemoveService
             Remove-Service -Name $ServiceName | out-null
         }
 
-        $ServiceFileName = Split-Path -Path $ServiceFile -Leaf
-        $LocalServiceFile = "C:\Windows\\System32\\drivers\\{0}" -f $ServiceFileName
         if (Test-Path -Path $LocalServiceFile) {
             Get-Item -Path $LocalServiceFile | Remove-Item -Force
+        }
+
+        $GetServiceError = $null
+        $ServiceOb = Get-Service `
+            -Name $ServiceName `
+            -ErrorAction SilentlyContinue `
+            -ErrorVariable GetServiceError
+        if (-not [String]::IsNullOrEmpty($GetServiceError)) {
+            $ReturnValue = $true
         }
     }
 
     if ($Remote) {
-        Invoke-Command `
+        $RemoveStatus = Invoke-Command `
             -Session $Session `
             -ScriptBlock $ScriptBlock `
-            -ArgumentList $ServiceName, $ServiceFile | out-null
+            -ArgumentList $ServiceName, $LocalServiceFile
 
-        UT-SetCertificate `
+        UT-DelCertificate `
             -CertFile $ServiceCert `
             -Remote $Remote `
             -Session $Session | out-null
     } else {
-        Invoke-Command `
+        $RemoveStatus = Invoke-Command `
             -ScriptBlock $ScriptBlock `
-            -ArgumentList $ServiceName, $ServiceFile | out-null
+            -ArgumentList $ServiceName, $LocalServiceFile
 
-        UT-SetCertificate `
+        UT-DelCertificate `
             -CertFile $ServiceCert `
             -Remote $Remote | out-null
+    }
+
+    if ($RemoveStatus) {
+        Win-DebugTimestamp -output (
+            "{0}: Remove server is successful" -f $LogKeyWord
+        )
+    } else {
+        Win-DebugTimestamp -output (
+            "{0}: Remove server is unsuccessful" -f $LogKeyWord
+        )
     }
 }
 

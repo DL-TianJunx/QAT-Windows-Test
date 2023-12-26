@@ -72,11 +72,15 @@ function WBase-ReturnFilesInit
     $LocationInfo.WriteLogToFile = $true
 
     if (Test-Path -Path $WinPowerShellLogFile) {
+        $WinPSLogFilePath = Split-Path -Path $WinPowerShellLogFile
+        $WinPSLogFileName = Split-Path -Path $WinPowerShellLogFile -Leaf
+        $WinPSLogFileNameArray = $WinPSLogFileName.split(".")
         for ($i = 0; $i -lt 1000; $i++) {
-            $WinPSLogFilePath = Split-Path -Path $WinPowerShellLogFile
-            $WinPSLogFileName = Split-Path -Path $WinPowerShellLogFile -Leaf
-            $WinPSLogFileNameArray = $WinPSLogFileName.split(".")
-            $WinPSLogFile = "{0}{1}-{2}.{3}" -f $WinPSLogFilePath, $WinPSLogFileNameArray[0], $i, $WinPSLogFileNameArray[1]
+            $WinPSLogFile = "{0}{1}-{2}.{3}" -f
+                $WinPSLogFilePath,
+                $WinPSLogFileNameArray[0],
+                $i,
+                $WinPSLogFileNameArray[1]
             if (-not (Test-Path -Path $WinPSLogFile)) {
                 break
             }
@@ -87,11 +91,15 @@ function WBase-ReturnFilesInit
     New-Item -Path $BertaResultPath -Name "STVTest-ps.log" -ItemType "file" | out-null
 
     if (Test-Path -Path $WinTestResultFile) {
+        $WinResultFilePath = Split-Path -Path $WinTestResultFile
+        $WinResultFileName = Split-Path -Path $WinTestResultFile -Leaf
+        $WinResultFileNameArray = $WinResultFileName.split(".")
         for ($i = 0; $i -lt 1000; $i++) {
-            $WinResultFilePath = Split-Path -Path $WinTestResultFile
-            $WinResultFileName = Split-Path -Path $WinTestResultFile -Leaf
-            $WinResultFileNameArray = $WinResultFileName.split(".")
-            $WinResultFile = "{0}{1}-{2}.{3}" -f $WinResultFilePath, $WinResultFileNameArray[0], $i, $WinResultFileNameArray[1]
+            $WinResultFile = "{0}{1}-{2}.{3}" -f
+                $WinResultFilePath,
+                $WinResultFileNameArray[0],
+                $i,
+                $WinResultFileNameArray[1]
             if (-not (Test-Path -Path $WinResultFile)) {
                 break
             }
@@ -102,11 +110,15 @@ function WBase-ReturnFilesInit
     New-Item -Path $BertaResultPath -Name $ResultFile -ItemType "file" | out-null
 
     if (Test-Path -Path $WinTestResultCsv) {
+        $WinResultCsvPath = Split-Path -Path $WinTestResultCsv
+        $WinResultCsvName = Split-Path -Path $WinTestResultCsv -Leaf
+        $WinResultCsvNameArray = $WinResultCsvName.split(".")
         for ($i = 0; $i -lt 1000; $i++) {
-            $WinResultCsvPath = Split-Path -Path $WinTestResultCsv
-            $WinResultCsvName = Split-Path -Path $WinTestResultCsv -Leaf
-            $WinResultCsvNameArray = $WinResultCsvName.split(".")
-            $WinResultCsv = "{0}{1}-{2}.{3}" -f $WinResultCsvPath, $WinResultCsvNameArray[0], $i, $WinResultCsvNameArray[1]
+            $WinResultCsv = "{0}{1}-{2}.{3}" -f
+                $WinResultCsvPath,
+                $WinResultCsvNameArray[0],
+                $i,
+                $WinResultCsvNameArray[1]
             if (-not (Test-Path -Path $WinResultCsv)) {
                 break
             }
@@ -116,15 +128,9 @@ function WBase-ReturnFilesInit
     }
     New-Item -Path $BertaResultPath -Name "result.csv" -ItemType "file" | out-null
 
-    if (Test-Path -Path $WinTestProcessPath) {
-        Remove-Item `
-            -Path $WinTestProcessPath `
-            -Recurse `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
+    if (-not (Test-Path -Path $WinTestProcessPath)) {
+        New-Item -Path $WinTestProcessPath -ItemType Directory | out-null
     }
-    New-Item -Path $WinTestProcessPath -ItemType Directory | out-null
 }
 
 function WBase-WriteTestResult
@@ -1881,27 +1887,57 @@ function WBase-StartProcess
         }
 
         if (Test-Path -Path $ProcessOutputLogPath) {
-            Remove-Item `
-                -Path $ProcessOutputLogPath `
-                -Force `
-                -Confirm:$false `
-                -ErrorAction Stop | out-null
+            $OutputLogPath = Split-Path -Path $ProcessOutputLogPath
+            $OutputLogName = Split-Path -Path $ProcessOutputLogPath -Leaf
+            $OutputLogNameArray = $OutputLogName.split(".")
+            for ($i = 0; $i -lt 1000; $i++) {
+                $OutputLog = "{0}{1}-{2}.{3}" -f
+                    $OutputLogPath,
+                    $OutputLogNameArray[0],
+                    $i,
+                    $OutputLogNameArray[1]
+                if (-not (Test-Path -Path $OutputLog)) {
+                    break
+                }
+            }
+            Copy-Item -Path $ProcessOutputLogPath -Destination $OutputLog | out-null
+            Get-Item -Path $ProcessOutputLogPath | Remove-Item -Recurse -Force | out-null
         }
 
         if (Test-Path -Path $ProcessErrorLogPath) {
-            Remove-Item `
-                -Path $ProcessErrorLogPath `
-                -Force `
-                -Confirm:$false `
-                -ErrorAction Stop | out-null
+            $ErrorLogPath = Split-Path -Path $ProcessErrorLogPath
+            $ErrorLogName = Split-Path -Path $ProcessErrorLogPath -Leaf
+            $ErrorLogNameArray = $ErrorLogName.split(".")
+            for ($i = 0; $i -lt 1000; $i++) {
+                $ErrorLog = "{0}{1}-{2}.{3}" -f
+                    $ErrorLogPath,
+                    $ErrorLogNameArray[0],
+                    $i,
+                    $ErrorLogNameArray[1]
+                if (-not (Test-Path -Path $ErrorLog)) {
+                    break
+                }
+            }
+            Copy-Item -Path $ProcessErrorLogPath -Destination $ErrorLog | out-null
+            Get-Item -Path $ProcessErrorLogPath | Remove-Item -Recurse -Force | out-null
         }
 
         if (Test-Path -Path $ProcessResultPath) {
-            Remove-Item `
-                -Path $ProcessResultPath `
-                -Force `
-                -Confirm:$false `
-                -ErrorAction Stop | out-null
+            $TestResultPath = Split-Path -Path $ProcessResultPath
+            $TestResultName = Split-Path -Path $ProcessResultPath -Leaf
+            $TestResultNameArray = $TestResultName.split(".")
+            for ($i = 0; $i -lt 1000; $i++) {
+                $TestResult = "{0}{1}-{2}.{3}" -f
+                    $TestResultPath,
+                    $TestResultNameArray[0],
+                    $i,
+                    $TestResultNameArray[1]
+                if (-not (Test-Path -Path $TestResult)) {
+                    break
+                }
+            }
+            Copy-Item -Path $ProcessResultPath -Destination $TestResult | out-null
+            Get-Item -Path $ProcessResultPath | Remove-Item -Recurse -Force | out-null
         }
         $ProcessResultName = Split-Path -Path $ProcessResultPath -Leaf
         $ProcessResultPathName = Split-Path -Path $ProcessResultPath

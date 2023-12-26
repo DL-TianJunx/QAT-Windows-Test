@@ -132,11 +132,11 @@ try {
                 -VMSwitchType "External" | out-null
 
             if ($InitVM) {
-                Gtest-ENVInit | out-null
+                Gtest-ENV -ENVType "init" | out-null
             }
         } else {
             WinHost-ENVInit | out-null
-            Gtest-ENVInit | out-null
+            Gtest-ENV -ENVType "init" | out-null
         }
 
         Win-DebugTimestamp -output ("Start to run test case....")
@@ -181,6 +181,7 @@ try {
 } catch {
     Win-DebugTimestamp -output $_
 } finally {
+    Gtest-ENV -ENVType "clear" | out-null
     WBase-CompareTestResult -CompareFile $CompareFile
     Win-DebugTimestamp -output ("Ending $($MyInvocation.MyCommand)")
 }

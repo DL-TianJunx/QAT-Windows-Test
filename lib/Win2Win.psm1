@@ -67,7 +67,6 @@ function WTW-ProcessVMInit
     Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
-
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
 

@@ -12,20 +12,22 @@ $global:Gtest = [hashtable] @{
     )
 }
 
-# About ENVInit
-function Gtest-ProcessENVInit
+# About Gtest ENV
+function Gtest-ProcessENV
 {
     Param(
         [Parameter(Mandatory=$True)]
         [bool]$Remote,
 
-        [string]$VMNameSuffix
+        [Parameter(Mandatory=$True)]
+        [string]$ENVType,
+
+        [string]$VMNameSuffix = $null
     )
 
     Start-Sleep -Seconds 5
 
     WBase-GetInfoFile | out-null
-
     $LocationInfo.WriteLogToConsole = $true
     $LocationInfo.WriteLogToFile = $false
 
@@ -43,254 +45,427 @@ function Gtest-ProcessENVInit
         $LogKeyWord = "Host"
     }
 
-    # Ready test file
+    # About test file
     $QualifierName = "D"
     $LocalTestSuite = "{0}:\CompressionFiles" -f $QualifierName
-    Win-DebugTimestamp -output (
-        "{0}: Prepare test files > {1}" -f
-            $LogKeyWord,
-            $LocalTestSuite
-    )
 
-    $ScriptBlock = {
-        Param($SourcePath, $QualifierName)
+    # Prepare:
+    if ($ENVType -eq "init") {
+        Win-DebugTimestamp -output (
+            "{0}: Prepare test files > {1}" -f
+                $LogKeyWord,
+                $LocalTestSuite
+        )
 
-        $ReturnValue = $false
+        $ScriptBlock = {
+            Param($SourcePath, $QualifierName)
 
-        $QualifierPath = "{0}:\" -f $QualifierName
-        $CopyPath = "{0}\CompressionFiles\*" -f $SourcePath
-        $DestinationPath = "{0}:\CompressionFiles" -f $QualifierName
+            $ReturnValue = $false
 
-        if (Test-Path -Path $SourcePath) {
+            $QualifierPath = "{0}:\" -f $QualifierName
+            $CopyPath = "{0}\CompressionFiles\*" -f $SourcePath
+            $DestinationPath = "{0}:\CompressionFiles" -f $QualifierName
+            if (Test-Path -Path $SourcePath) {
+                if (Test-Path -Path $QualifierPath) {
+                    $DisplayRoot = (Get-PSDrive -Name $QualifierName).DisplayRoot
+                    if ($DisplayRoot -ne $SourcePath) {
+                        Copy-Item `
+                            -Path $CopyPath `
+                            -Destination $DestinationPath `
+                            -Recurse `
+                            -Force `
+                            -Confirm:$false `
+                            -ErrorAction Stop | out-null
+                    }
+                } else {
+                    New-PSDrive `
+                        -Name $QualifierName `
+                        -Root $SourcePath `
+                        -Persist `
+                        -PSProvider "FileSystem" `
+                        -Scope Global | out-null
+                }
+            }
+
+            if (Test-Path -Path $DestinationPath) {
+                $ReturnValue = $true
+            }
+
+            return $ReturnValue
+        }
+
+        if ($Remote) {
+            $PrepareStatus = Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $Gtest.SourcePath, $QualifierName
+        } else {
+            $PrepareStatus = Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $Gtest.SourcePath, $QualifierName
+        }
+
+        if ($PrepareStatus) {
+            Win-DebugTimestamp -output (
+                "{0}: Prepare test files > passed" -f $LogKeyWord
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Prepare test files > failed" -f $LogKeyWord
+            )
+        }
+    }
+
+    # Clear:
+    if ($ENVType -eq "clear") {
+        Win-DebugTimestamp -output (
+            "{0}: Clear test files > {1}" -f
+                $LogKeyWord,
+                $LocalTestSuite
+        )
+
+        $ScriptBlock = {
+            Param($SourcePath, $QualifierName)
+
+            $ReturnValue = $false
+
+            $QualifierPath = "{0}:\" -f $QualifierName
+            $DestinationPath = "{0}:\CompressionFiles" -f $QualifierName
             if (Test-Path -Path $QualifierPath) {
                 $DisplayRoot = (Get-PSDrive -Name $QualifierName).DisplayRoot
-                if ($DisplayRoot -ne $SourcePath) {
-                    Copy-Item `
-                        -Path $CopyPath `
-                        -Destination $DestinationPath `
-                        -Recurse `
-                        -Force `
-                        -Confirm:$false `
-                        -ErrorAction Stop | out-null
+                if ($DisplayRoot -eq $SourcePath) {
+                    net use D: /Delete
+                } else {
+                    if (Test-Path -Path $DestinationPath) {
+                        Get-Item -Path $DestinationPath | Remove-Item -Recurse -Force | out-null
+                    }
                 }
-            } else {
-                New-PSDrive `
-                    -Name $QualifierName `
-                    -Root $SourcePath `
-                    -Persist `
-                    -PSProvider "FileSystem" `
-                    -Scope Global | out-null
             }
+
+            if (-not (Test-Path -Path $DestinationPath)) {
+                $ReturnValue = $true
+            }
+
+            return $ReturnValue
         }
 
-        if (Test-Path -Path $DestinationPath) {
-            $ReturnValue = $true
+        if ($Remote) {
+            $ClearStatus = Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $Gtest.SourcePath, $QualifierName
+        } else {
+            $ClearStatus = Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $Gtest.SourcePath, $QualifierName
         }
 
-        return $ReturnValue
-    }
-
-    if ($Remote) {
-        $PrepareStatus = Invoke-Command `
-            -Session $Session `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $Gtest.SourcePath, $QualifierName
-    } else {
-        $PrepareStatus = Invoke-Command `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $Gtest.SourcePath, $QualifierName
-    }
-
-    if ($PrepareStatus) {
-        Win-DebugTimestamp -output (
-            "{0}: Prepare test files > passed" -f $LogKeyWord
-        )
-    } else {
-        Win-DebugTimestamp -output (
-            "{0}: Prepare test files > failed" -f $LogKeyWord
-        )
-    }
-
-    # Ready test script(US STV)
-    $ShareTestSuite = "{0}\QatTestBerta" -f (Split-Path -Parent $Gtest.SourcePath)
-    $LocalTestSuite = "C:\QatTestBerta"
-    Win-DebugTimestamp -output (
-        "{0}: Prepare test script > {1}" -f
-            $LogKeyWord,
-            $LocalTestSuite
-    )
-
-    $ScriptBlock = {
-        Param($ShareTestSuite, $LocalTestSuite)
-
-        $ReturnValue = $false
-
-        if (Test-Path -Path $LocalTestSuite) {
-            Get-Item -Path $LocalTestSuite | Remove-Item -Recurse -Force | out-null
+        if ($ClearStatus) {
+            Win-DebugTimestamp -output (
+                "{0}: Clear test files > passed" -f $LogKeyWord
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Clear test files > failed" -f $LogKeyWord
+            )
         }
-        New-Item -Path $LocalTestSuite -ItemType Directory | out-null
+    }
 
-        $CopyPath = "{0}\\*" -f $ShareTestSuite
-        Copy-Item `
-            -Path $CopyPath `
-            -Destination $LocalTestSuite `
-            -Recurse `
-            -Force `
-            -Confirm:$false `
-            -ErrorAction Stop | out-null
+    # About test script(US STV and Gtest)
+    # Prepare:
+    if ($ENVType -eq "init") {
+        $ScriptBlock = {
+            Param($ShareTestSuite, $LocalTestSuite)
 
-        if (Test-Path -Path $LocalTestSuite) {
-            $ReturnValue = $true
+            $ReturnValue = $false
+
+            if (Test-Path -Path $LocalTestSuite) {
+                Get-Item -Path $LocalTestSuite | Remove-Item -Recurse -Force | out-null
+            }
+            New-Item -Path $LocalTestSuite -ItemType Directory | out-null
+
+            $CopyPath = "{0}\\*" -f $ShareTestSuite
+            Copy-Item `
+                -Path $CopyPath `
+                -Destination $LocalTestSuite `
+                -Recurse `
+                -Force `
+                -Confirm:$false `
+                -ErrorAction Stop | out-null
+
+            if (Test-Path -Path $LocalTestSuite) {
+                $ReturnValue = $true
+            }
+
+            return $ReturnValue
         }
 
-        return $ReturnValue
-    }
-
-    if ($Remote) {
-        $PrepareStatus = Invoke-Command `
-            -Session $Session `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ShareTestSuite, $LocalTestSuite
-    } else {
-        $PrepareStatus = Invoke-Command `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ShareTestSuite, $LocalTestSuite
-    }
-
-    if ($PrepareStatus) {
+        $ShareTestSuite = "{0}\QatTestBerta" -f (Split-Path -Parent $Gtest.SourcePath)
+        $LocalTestSuite = "C:\QatTestBerta"
         Win-DebugTimestamp -output (
-            "{0}: Prepare test script > passed" -f $LogKeyWord
+            "{0}: Prepare test script > {1}" -f
+                $LogKeyWord,
+                $LocalTestSuite
         )
-    } else {
+
+        if ($Remote) {
+            $PrepareStatus = Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $ShareTestSuite, $LocalTestSuite
+        } else {
+            $PrepareStatus = Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $ShareTestSuite, $LocalTestSuite
+        }
+
+        if ($PrepareStatus) {
+            Win-DebugTimestamp -output (
+                "{0}: Prepare test script > passed" -f $LogKeyWord
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Prepare test script > failed" -f $LogKeyWord
+            )
+        }
+
+        $ShareTestSuite = "{0}\{1}" -f $Gtest.SourcePath, $Gtest.TestScriptName
+        $LocalTestSuite = "C:\{0}" -f $Gtest.TestScriptName
         Win-DebugTimestamp -output (
-            "{0}: Prepare test script > failed" -f $LogKeyWord
+            "{0}: Prepare test script > {1}" -f
+                $LogKeyWord,
+                $LocalTestSuite
         )
+
+        if ($Remote) {
+            $PrepareStatus = Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $ShareTestSuite, $LocalTestSuite
+        } else {
+            $PrepareStatus = Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $ShareTestSuite, $LocalTestSuite
+        }
+
+        if ($PrepareStatus) {
+            Win-DebugTimestamp -output (
+                "{0}: Prepare test script > passed" -f $LogKeyWord
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Prepare test script > failed" -f $LogKeyWord
+            )
+        }
     }
 
-    # Ready test script(Gtest)
-    $ShareTestSuite = "{0}\{1}" -f $Gtest.SourcePath, $Gtest.TestScriptName
-    $LocalTestSuite = "C:\{0}" -f $Gtest.TestScriptName
-    Win-DebugTimestamp -output (
-        "{0}: Prepare test script > {1}" -f
-            $LogKeyWord,
-            $LocalTestSuite
-    )
+    # Clear:
+    if ($ENVType -eq "clear") {
+        $ScriptBlock = {
+            Param($LocalTestSuite)
 
-    if ($Remote) {
-        $PrepareStatus = Invoke-Command `
-            -Session $Session `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ShareTestSuite, $LocalTestSuite
-    } else {
-        $PrepareStatus = Invoke-Command `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ShareTestSuite, $LocalTestSuite
+            $ReturnValue = $false
+
+            if (Test-Path -Path $LocalTestSuite) {
+                Get-Item -Path $LocalTestSuite | Remove-Item -Recurse -Force | out-null
+            }
+
+            if (-not (Test-Path -Path $LocalTestSuite)) {
+                $ReturnValue = $true
+            }
+
+            return $ReturnValue
+        }
+
+        $LocalTestSuite = "C:\QatTestBerta"
+        Win-DebugTimestamp -output (
+            "{0}: Clear test script > {1}" -f
+                $LogKeyWord,
+                $LocalTestSuite
+        )
+
+        if ($Remote) {
+            $ClearStatus = Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $LocalTestSuite
+        } else {
+            $ClearStatus = Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $LocalTestSuite
+        }
+
+        if ($ClearStatus) {
+            Win-DebugTimestamp -output (
+                "{0}: Clear test script > passed" -f $LogKeyWord
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Clear test script > failed" -f $LogKeyWord
+            )
+        }
+
+        $LocalTestSuite = "C:\{0}" -f $Gtest.TestScriptName
+        Win-DebugTimestamp -output (
+            "{0}: Clear test script > {1}" -f
+                $LogKeyWord,
+                $LocalTestSuite
+        )
+
+        if ($Remote) {
+            $ClearStatus = Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $LocalTestSuite
+        } else {
+            $ClearStatus = Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $LocalTestSuite
+        }
+
+        if ($ClearStatus) {
+            Win-DebugTimestamp -output (
+                "{0}: Clear test script > passed" -f $LogKeyWord
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Clear test script > failed" -f $LogKeyWord
+            )
+        }
     }
 
-    if ($PrepareStatus) {
-        Win-DebugTimestamp -output (
-            "{0}: Prepare test script > passed" -f $LogKeyWord
-        )
-    } else {
-        Win-DebugTimestamp -output (
-            "{0}: Prepare test script > failed" -f $LogKeyWord
-        )
-    }
-
-    # Ready test include and library file
+    # About test include and library file
     $IncludeFileArray = @()
     $IncludeFileArray += "qatzip.h"
     $LibFileArray = @()
     $LibFileArray += "libqatzip.lib"
     $LibFileArray += "qatzip.lib"
 
-    Win-DebugTimestamp -output (
-        "{0}: Prepare test include and library file" -f $LogKeyWord
-    )
-
-    $ScriptBlock = {
-        Param($IncludeFileArray, $LibFileArray)
-
-        $GtestIncludePath = "C:\qat_gtest\shared\include"
-        $GTestLibPath = "C:\qat_gtest\shared\lib"
-
-        $IncludeFileArray | ForEach-Object {
-            $GTestIncludeFile = "{0}\{1}" -f $GtestIncludePath, $_
-            $IncludeFile = "C:\Program Files\Intel\Intel(R) QuickAssist Technology\Compression\Library\{0}" -f $_
-            if (Test-Path -Path $GTestIncludeFile) {
-                Get-Item -Path $GTestIncludeFile | Remove-Item -Force | out-null
-            }
-            Copy-Item -Path $IncludeFile -Destination $GTestIncludeFile
-        }
-
-        $LibFileArray | ForEach-Object {
-            $GTestLibFile = "{0}\{1}" -f $GTestLibPath, $_
-            $LibFile = "C:\Program Files\Intel\Intel(R) QuickAssist Technology\Compression\Library\{0}" -f $_
-            if (Test-Path -Path $GTestLibFile) {
-                Get-Item -Path $GTestLibFile | Remove-Item -Force | out-null
-            }
-            Copy-Item -Path $LibFile -Destination $GTestLibFile
-        }
-    }
-
-    if ($Remote) {
-        Invoke-Command `
-            -Session $Session `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $IncludeFileArray, $LibFileArray | out-null
-    } else {
-        Invoke-Command `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $IncludeFileArray, $LibFileArray | out-null
-    }
-
-    Win-DebugTimestamp -output (
-        "{0}: Prepare test include and library file > passed" -f $LogKeyWord
-    )
-
-    if ($Remote) {
-        # Ready gtest app
-        $GtestAppNameArray = @(
-            "qatzip_gtest.exe",
-            "qatzipd_gtest.exe",
-            "qatzipkm_gtest"
+    # Prepare:
+    if ($ENVType -eq "init") {
+        Win-DebugTimestamp -output (
+            "{0}: Prepare test include and library file" -f $LogKeyWord
         )
 
-        Foreach ($GtestAppName in $GtestAppNameArray) {
-            $ProcessFilePath = "{0}\\{1}" -f $Gtest.GtestPath, $GtestAppName
-            $ProcessFilePathDestination = "{0}\\{1}" -f $STVWinPath, $GtestAppName
-            if (Test-Path -Path $ProcessFilePath) {
-                Copy-Item `
-                    -ToSession $Session `
-                    -Path $ProcessFilePath `
-                    -Destination $ProcessFilePathDestination `
-                    -Force `
-                    -Confirm:$false | out-null
+        $ScriptBlock = {
+            Param($IncludeFileArray, $LibFileArray, $TestScriptName)
+
+            $GtestIncludePath = "C:\{0}\shared\include" -f $TestScriptName
+            $GTestLibPath = "C:\{0}\shared\lib" -f $TestScriptName
+
+            $IncludeFileArray | ForEach-Object {
+                $GTestIncludeFile = "{0}\{1}" -f $GtestIncludePath, $_
+                $IncludeFile = "C:\Program Files\Intel\Intel(R) QuickAssist Technology\Compression\Library\{0}" -f $_
+                if (Test-Path -Path $GTestIncludeFile) {
+                    Get-Item -Path $GTestIncludeFile | Remove-Item -Force | out-null
+                }
+                Copy-Item -Path $IncludeFile -Destination $GTestIncludeFile
+            }
+
+            $LibFileArray | ForEach-Object {
+                $GTestLibFile = "{0}\{1}" -f $GTestLibPath, $_
+                $LibFile = "C:\Program Files\Intel\Intel(R) QuickAssist Technology\Compression\Library\{0}" -f $_
+                if (Test-Path -Path $GTestLibFile) {
+                    Get-Item -Path $GTestLibFile | Remove-Item -Force | out-null
+                }
+                Copy-Item -Path $LibFile -Destination $GTestLibFile
             }
         }
-    } else {
-        # Start qzfor server
-        $ServiceFile = "{0}\\{1}.sys" -f $Gtest.GtestPath, $Gtest.ServiceName
-        $ServiceCert = "{0}\\{1}.cer" -f $Gtest.GtestPath, $Gtest.ServiceName
+
         if ($Remote) {
-            UT-CreateService `
-                -ServiceName $Gtest.ServiceName `
-                -ServiceFile $ServiceFile `
-                -ServiceCert $ServiceCert `
-                -Remote $Remote `
-                -Session $Session | out-null
+            Invoke-Command `
+                -Session $Session `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $IncludeFileArray,
+                              $LibFileArray,
+                              $Gtest.TestScriptName | out-null
         } else {
-            UT-CreateService `
-                -ServiceName $Gtest.ServiceName `
-                -ServiceFile $ServiceFile `
-                -ServiceCert $ServiceCert `
-                -Remote $Remote | out-null
+            Invoke-Command `
+                -ScriptBlock $ScriptBlock `
+                -ArgumentList $IncludeFileArray,
+                              $LibFileArray,
+                              $Gtest.TestScriptName | out-null
+        }
+
+        Win-DebugTimestamp -output (
+            "{0}: Prepare test include and library file > passed" -f $LogKeyWord
+        )
+    }
+
+    # Clear: Nothing to do
+
+    # About others: qzfor server can not start in the VM, so skip
+    $ServiceFile = "{0}\\{1}.sys" -f $Gtest.GtestPath, $Gtest.ServiceName
+    $ServiceCert = "{0}\\{1}.cer" -f $Gtest.GtestPath, $Gtest.ServiceName
+
+    # Prepare:
+    if ($ENVType -eq "init") {
+        if ($Remote) {
+            # Ready gtest app
+            $GtestAppNameArray = @(
+                "qatzip_gtest.exe",
+                "qatzipd_gtest.exe",
+                "qatzipkm_gtest"
+            )
+
+            Foreach ($GtestAppName in $GtestAppNameArray) {
+                $ProcessFilePath = "{0}\\{1}" -f $Gtest.GtestPath, $GtestAppName
+                $ProcessFilePathDestination = "{0}\\{1}" -f $STVWinPath, $GtestAppName
+                if (Test-Path -Path $ProcessFilePath) {
+                    Copy-Item `
+                        -ToSession $Session `
+                        -Path $ProcessFilePath `
+                        -Destination $ProcessFilePathDestination `
+                        -Force `
+                        -Confirm:$false | out-null
+                }
+            }
+        } else {
+            # Start qzfor server
+            if ($Remote) {
+                UT-CreateService `
+                    -ServiceName $Gtest.ServiceName `
+                    -ServiceFile $ServiceFile `
+                    -ServiceCert $ServiceCert `
+                    -Remote $Remote `
+                    -Session $Session | out-null
+            } else {
+                UT-CreateService `
+                    -ServiceName $Gtest.ServiceName `
+                    -ServiceFile $ServiceFile `
+                    -ServiceCert $ServiceCert `
+                    -Remote $Remote | out-null
+            }
+        }
+    }
+
+    # Clear:
+    if ($ENVType -eq "clear") {
+        if (-not $Remote) {
+            if ($Remote) {
+                UT-RemoveService `
+                    -ServiceName $Gtest.ServiceName `
+                    -ServiceFile $ServiceFile `
+                    -ServiceCert $ServiceCert `
+                    -Remote $Remote `
+                    -Session $Session | out-null
+            } else {
+                UT-RemoveService `
+                    -ServiceName $Gtest.ServiceName `
+                    -ServiceFile $ServiceFile `
+                    -ServiceCert $ServiceCert `
+                    -Remote $Remote | out-null
+            }
         }
     }
 }
 
-function Gtest-ENVInit
+function Gtest-ENV
 {
+    Param(
+        [string]$ENVType = "init"
+    )
+
     WBase-GenerateInfoFile | out-null
 
     $ProcessList = [hashtable] @{}
@@ -305,29 +480,27 @@ function Gtest-ENVInit
     # Start process of ENVInit
     $PlatformList | ForEach-Object {
         if ($LocationInfo.HVMode) {
-            $LogKeyWord = "{0}_{1}" -f $env:COMPUTERNAME, $_
-            $GtestInitProcessArgs = "Gtest-ProcessENVInit -Remote 1"
-            $GtestInitProcessArgs = "{0} -VMNameSuffix {1}" -f $GtestInitProcessArgs, $_
+            $GtestProcessArgs = "Gtest-ProcessENV -Remote 1"
+            $GtestProcessArgs = "{0} -VMNameSuffix {1}" -f $GtestProcessArgs, $_
         } else {
-            $LogKeyWord = "Host"
-            $GtestInitProcessArgs = "Gtest-ProcessENVInit -Remote 0"
+            $GtestProcessArgs = "Gtest-ProcessENV -Remote 0"
         }
+        $GtestProcessArgs = "{0} -ENVType {1}" -f $GtestProcessArgs, $ENVType
+        $GtestProcesskeyWords = "Gtest_{0}_{1}" -f $ENVType, $_
 
-        $GtestInitProcesskeyWords = "Gtest_init_{0}" -f $_
-
-        $GtestInitProcess = WBase-StartProcess `
+        $GtestProcess = WBase-StartProcess `
             -ProcessFilePath "pwsh" `
-            -ProcessArgs $GtestInitProcessArgs `
-            -keyWords $GtestInitProcesskeyWords
+            -ProcessArgs $GtestProcessArgs `
+            -keyWords $GtestProcesskeyWords
 
         $ProcessList[$_] = [hashtable] @{
-            ID = $GtestInitProcess.ID
-            Output = $GtestInitProcess.Output
-            Error = $GtestInitProcess.Error
-            Result = $GtestInitProcess.Result
+            ID = $GtestProcess.ID
+            Output = $GtestProcess.Output
+            Error = $GtestProcess.Error
+            Result = $GtestProcess.Result
         }
 
-        $ProcessIDArray += $GtestInitProcess.ID
+        $ProcessIDArray += $GtestProcess.ID
     }
 
     # Wait Gtest ENV Init process completed
@@ -337,13 +510,13 @@ function Gtest-ENVInit
 
     # Check output and error log for Gtest ENV Init process
     $PlatformList | ForEach-Object {
-        $GtestInitProcesskeyWords = "Gtest_init_{0}" -f $_
+        $GtestProcesskeyWords = "Gtest_{0}_{1}" -f $ENVType, $_
         $ProcessResult = WBase-CheckProcessOutput `
             -ProcessOutputLogPath $ProcessList[$_].Output `
             -ProcessErrorLogPath $ProcessList[$_].Error `
             -CheckResultFlag $false `
             -Remote $false `
-            -keyWords $GtestInitProcesskeyWords
+            -keyWords $GtestProcesskeyWords
     }
 }
 
