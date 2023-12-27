@@ -47,7 +47,15 @@ function Gtest-ProcessENV
 
     # About test file
     $QualifierName = "D"
-    $LocalTestSuite = "{0}:\CompressionFiles" -f $QualifierName
+    $TestFilePathName = "CompressionFiles"
+    $LocalTestSuite = "{0}:\{1}" -f $QualifierName, $TestFilePathName
+    $ParentsVM = "{0}\{1}.vhdx" -f
+        $VHDAndTestFiles.ParentsVMPath,
+        $TestFilePathName
+    $ChildVM = "{0}\{1}_{2}_D.vhdx" -f
+        $VHDAndTestFiles.ChildVMPath,
+        $env:COMPUTERNAME,
+        $VMNameSuffix
 
     # Prepare:
     if ($ENVType -eq "init") {
@@ -58,7 +66,7 @@ function Gtest-ProcessENV
         )
 
         $ScriptBlock = {
-            Param($SourcePath, $QualifierName)
+            Param($Remote, $SourcePath, $QualifierName)
 
             $ReturnValue = $false
 
@@ -69,21 +77,25 @@ function Gtest-ProcessENV
                 if (Test-Path -Path $QualifierPath) {
                     $DisplayRoot = (Get-PSDrive -Name $QualifierName).DisplayRoot
                     if ($DisplayRoot -ne $SourcePath) {
-                        Copy-Item `
-                            -Path $CopyPath `
-                            -Destination $DestinationPath `
-                            -Recurse `
-                            -Force `
-                            -Confirm:$false `
-                            -ErrorAction Stop | out-null
+                        if (-not (Test-Path -Path $DestinationPath)) {
+                            Copy-Item `
+                                -Path $CopyPath `
+                                -Destination $DestinationPath `
+                                -Recurse `
+                                -Force `
+                                -Confirm:$false `
+                                -ErrorAction Stop | out-null
+                        }
                     }
                 } else {
-                    New-PSDrive `
-                        -Name $QualifierName `
-                        -Root $SourcePath `
-                        -Persist `
-                        -PSProvider "FileSystem" `
-                        -Scope Global | out-null
+                    if (-not $Remote) {
+                        New-PSDrive `
+                            -Name $QualifierName `
+                            -Root $SourcePath `
+                            -Persist `
+                            -PSProvider "FileSystem" `
+                            -Scope Global | out-null
+                    }
                 }
             }
 
@@ -95,14 +107,48 @@ function Gtest-ProcessENV
         }
 
         if ($Remote) {
+            # Add hard driver to VM
+            HV-RestartVMHard `
+                -VMName $VMName `
+                -StopFlag $true `
+                -TurnOff $true `
+                -StartFlag $false `
+                -WaitFlag $false | out-null
+
+            New-VHD `
+                -ParentPath $ParentsVM `
+                -Path $ChildVM `
+                -Differencing `
+                -ErrorAction Stop | out-null
+
+            Add-VMHardDiskDrive `
+                -VMName $VMName `
+                -Path $ChildVM `
+                -ControllerType "IDE" `
+                -ControllerNumber 0 `
+                -ControllerLocation 1 | out-null
+
+            HV-RestartVMHard `
+                -VMName $VMName `
+                -StopFlag $false `
+                -TurnOff $false `
+                -StartFlag $true `
+                -WaitFlag $false | out-null
+
+            $Session = HV-PSSessionCreate `
+                -VMName $VMName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false
+
             $PrepareStatus = Invoke-Command `
                 -Session $Session `
                 -ScriptBlock $ScriptBlock `
-                -ArgumentList $Gtest.SourcePath, $QualifierName
+                -ArgumentList $Remote, $Gtest.SourcePath, $QualifierName
         } else {
             $PrepareStatus = Invoke-Command `
                 -ScriptBlock $ScriptBlock `
-                -ArgumentList $Gtest.SourcePath, $QualifierName
+                -ArgumentList $Remote, $Gtest.SourcePath, $QualifierName
         }
 
         if ($PrepareStatus) {
@@ -125,19 +171,23 @@ function Gtest-ProcessENV
         )
 
         $ScriptBlock = {
-            Param($SourcePath, $QualifierName)
+            Param($Remote, $SourcePath, $QualifierName)
 
             $ReturnValue = $false
 
             $QualifierPath = "{0}:\" -f $QualifierName
             $DestinationPath = "{0}:\CompressionFiles" -f $QualifierName
             if (Test-Path -Path $QualifierPath) {
-                $DisplayRoot = (Get-PSDrive -Name $QualifierName).DisplayRoot
-                if ($DisplayRoot -eq $SourcePath) {
-                    net use D: /Delete
+                if ($Remote) {
+                    $ReturnValue = $true
                 } else {
-                    if (Test-Path -Path $DestinationPath) {
-                        Get-Item -Path $DestinationPath | Remove-Item -Recurse -Force | out-null
+                    $DisplayRoot = (Get-PSDrive -Name $QualifierName).DisplayRoot
+                    if ($DisplayRoot -eq $SourcePath) {
+                        net use D: /Delete
+                    } else {
+                        if (Test-Path -Path $DestinationPath) {
+                            Get-Item -Path $DestinationPath | Remove-Item -Recurse -Force | out-null
+                        }
                     }
                 }
             }
@@ -153,11 +203,41 @@ function Gtest-ProcessENV
             $ClearStatus = Invoke-Command `
                 -Session $Session `
                 -ScriptBlock $ScriptBlock `
-                -ArgumentList $Gtest.SourcePath, $QualifierName
+                -ArgumentList $Remote, $Gtest.SourcePath, $QualifierName
+
+            HV-RestartVMHard `
+                -VMName $VMName `
+                -StopFlag $true `
+                -TurnOff $true `
+                -StartFlag $false `
+                -WaitFlag $false | out-null
+
+            Remove-VMHardDiskDrive `
+                -VMName $VMName `
+                -ControllerType "IDE" `
+                -ControllerNumber 0 `
+                -ControllerLocation 1 | out-null
+
+            if (Test-Path -Path $ChildVM) {
+                Get-Item -Path $ChildVM | Remove-Item -Force | out-null
+            }
+
+            HV-RestartVMHard `
+                -VMName $VMName `
+                -StopFlag $false `
+                -TurnOff $false `
+                -StartFlag $true `
+                -WaitFlag $false | out-null
+
+            $Session = HV-PSSessionCreate `
+                -VMName $VMName `
+                -PSName $PSSessionName `
+                -IsWin $true `
+                -CheckFlag $false
         } else {
             $ClearStatus = Invoke-Command `
                 -ScriptBlock $ScriptBlock `
-                -ArgumentList $Gtest.SourcePath, $QualifierName
+                -ArgumentList $Remote, $Gtest.SourcePath, $QualifierName
         }
 
         if ($ClearStatus) {
@@ -473,6 +553,20 @@ function Gtest-ENV
     $PlatformList = [System.Array] @()
     if ($LocationInfo.HVMode) {
         $PlatformList = $LocationInfo.VM.NameArray
+        $TestFilePathName = "CompressionFiles"
+        $BertaSource = "{0}\\{1}.vhdx" -f
+            $VHDAndTestFiles.SourceVMPath,
+            $TestFilePathName
+        $ParentsVM = "{0}\{1}.vhdx" -f
+            $VHDAndTestFiles.ParentsVMPath,
+            $TestFilePathName
+        if (-not [System.IO.File]::Exists($ParentsVM)) {
+            Copy-Item `
+                -Path $BertaSource `
+                -Destination $ParentsVM `
+                -Force `
+                -ErrorAction Stop | out-null
+        }
     } else {
         $PlatformList += "Host"
     }

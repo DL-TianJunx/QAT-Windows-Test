@@ -2299,6 +2299,12 @@ function WBase-CheckProcessOutput
     }
 
     # Check output and error log
+    Win-DebugTimestamp -output (
+        "{0}: Double check output log and error log of process({1})" -f
+            $keyWords,
+            $CheckResultType
+    )
+
     $ScriptBlock = {
         Param($ProcessOutputLogPath, $ProcessErrorLogPath)
 
@@ -2335,7 +2341,7 @@ function WBase-CheckProcessOutput
             if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
                 if ($ReturnValue.result) {
                     $ReturnValue.result = $false
-                    $ReturnValue.error = "process_error"
+                    $ReturnValue.error = "get_error"
                 }
             }
         }
@@ -2354,51 +2360,22 @@ function WBase-CheckProcessOutput
             -ArgumentList $ProcessOutputLogPath, $ProcessErrorLogPath
     }
 
-    # Check test result
-    if ($CheckResultFlag) {
-        if ($CheckResultType -eq "Base") {
-            if ($ReturnValue.result) {
-                if ([System.IO.File]::Exists($ProcessResultPath)) {
-                    $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $ProcessResultPath
-                    if ([String]::IsNullOrEmpty($ProcessResultHashtable)) {
-                        $ReturnValue.result = $false
-                        $ReturnValue.error = "no_test_result"
-                    } else {
-                        $ReturnValue.result = $ProcessResultHashtable.result
-                        $ReturnValue.error = $ProcessResultHashtable.error
-                        $ReturnValue["testResult"] = $ProcessResultHashtable
-                    }
-                } else {
-                    $ReturnValue.result = $false
-                    $ReturnValue.error = "no_result_file"
-                }
-            }
-        }
-
-        if ($CheckResultType -eq "Gtest") {
-            if ($ReturnValue.result) {
-                if ([System.IO.File]::Exists($ProcessOutputLogPath)) {
-                    if ($Remote) {
-                        $CheckResult = Gtest-GetTestCases `
-                            -TestResultPath $ProcessOutputLogPath `
-                            -Remote $Remote `
-                            -Session $Session
-                    } else {
-                        $CheckResult = Gtest-GetTestCases `
-                            -TestResultPath $ProcessOutputLogPath `
-                            -Remote $Remote
-                    }
-
-                    $ReturnValue.result = $CheckResult.result
-                    $ReturnValue.error = $CheckResult.error
-                    $ReturnValue["testcases"] = $CheckResult.testcases
-                }
-            }
-        }
+    if ($ReturnValue.result) {
+        Win-DebugTimestamp -output (
+            "{0}: Double check result > passed" -f $keyWords
+        )
+    } else {
+        Win-DebugTimestamp -output (
+            "{0}: Double check result > failed: {1}" -f $keyWords, $ReturnValue.error
+        )
     }
 
     # Copy outputlog and errorlog files to BertaResultPath for remote
     if ($Remote) {
+        if ([String]::IsNullOrEmpty($WinTestProcessPath)) {
+            $WinTestProcessPath = "{0}\\Process" -f $LocationInfo.BertaResultPath
+        }
+
         if ([String]::IsNullOrEmpty($LocationInfo.TestCaseName)) {
             $ProcessOutputLogPathName = Split-Path -Path $ProcessOutputLogPath -Leaf
             $ProcessErrorLogPathName = Split-Path -Path $ProcessErrorLogPath -Leaf
@@ -2430,6 +2407,12 @@ function WBase-CheckProcessOutput
                 Param($ProcessOutputLogPath)
                 Test-Path -Path $ProcessOutputLogPath
             } -ArgumentList $ProcessOutputLogPath) {
+            Win-DebugTimestamp -output (
+                "Copy output log file from '{0}' to '{1}'" -f
+                    $ProcessOutputLogPath,
+                    $ProcessOutputLogDestination
+            )
+
             Copy-Item `
                 -FromSession $Session `
                 -Path $ProcessOutputLogPath `
@@ -2454,6 +2437,12 @@ function WBase-CheckProcessOutput
                 Param($ProcessErrorLogPath)
                 Test-Path -Path $ProcessErrorLogPath
             } -ArgumentList $ProcessErrorLogPath) {
+            Win-DebugTimestamp -output (
+                "Copy error log file from '{0}' to '{1}'" -f
+                    $ProcessErrorLogPath,
+                    $ProcessErrorLogDestination
+            )
+
             Copy-Item `
                 -FromSession $Session `
                 -Path $ProcessErrorLogPath `
@@ -2479,6 +2468,12 @@ function WBase-CheckProcessOutput
                     Param($ProcessResultPath)
                     Test-Path -Path $ProcessResultPath
                 } -ArgumentList $ProcessResultPath) {
+                Win-DebugTimestamp -output (
+                    "Copy result file from '{0}' to '{1}'" -f
+                        $ProcessResultPath,
+                        $ProcessResultPathDestination
+                )
+
                 Copy-Item `
                     -FromSession $Session `
                     -Path $ProcessResultPath `
@@ -2491,6 +2486,72 @@ function WBase-CheckProcessOutput
                     Remove-Item -Path $ProcessResultPath -Force | out-null
                 } -ArgumentList $ProcessResultPath
             }
+        }
+    }
+
+    # Check test result
+    if ($CheckResultFlag -and $ReturnValue.result) {
+        Win-DebugTimestamp -output (
+            "{0}: Double check test result log of process({1})" -f
+                $keyWords,
+                $CheckResultType
+        )
+
+        if ($Remote) {
+            $CheckOutputLogFile = $ProcessOutputLogDestination
+            $CheckErrorLogFile = $ProcessErrorLogDestination
+            $CheckResultFile = $ProcessResultPathDestination
+        } else {
+            $CheckOutputLogFile = $ProcessOutputLogPath
+            $CheckErrorLogFile = $ProcessErrorLogPath
+            $CheckResultFile = $ProcessResultPath
+        }
+
+        if ($CheckResultType -eq "Base") {
+            if ([System.IO.File]::Exists($CheckResultFile)) {
+                $ProcessResultHashtable = WBase-ReadHashtableFromJsonFile `
+                    -InfoFilePath $CheckResultFile
+                if ([String]::IsNullOrEmpty($ProcessResultHashtable)) {
+                    $ReturnValue.result = $false
+                    $ReturnValue.error = "no_test_result"
+                } else {
+                    $ReturnValue.result = $ProcessResultHashtable.result
+                    $ReturnValue.error = $ProcessResultHashtable.error
+                    $ReturnValue["testResult"] = $ProcessResultHashtable
+                }
+            } else {
+                $ReturnValue.result = $false
+                $ReturnValue.error = "no_result_file"
+            }
+        }
+
+        if ($CheckResultType -eq "Gtest") {
+            if ([System.IO.File]::Exists($CheckOutputLogFile)) {
+                if ($Remote) {
+                    $CheckResult = Gtest-GetTestCases `
+                        -TestResultPath $CheckOutputLogFile `
+                        -Remote $Remote `
+                        -Session $Session
+                } else {
+                    $CheckResult = Gtest-GetTestCases `
+                        -TestResultPath $CheckOutputLogFile `
+                        -Remote $Remote
+                }
+
+                $ReturnValue.result = $CheckResult.result
+                $ReturnValue.error = $CheckResult.error
+                $ReturnValue["testcases"] = $CheckResult.testcases
+            }
+        }
+
+        if ($ReturnValue.result) {
+            Win-DebugTimestamp -output (
+                "{0}: Double check result > passed" -f $keyWords
+            )
+        } else {
+            Win-DebugTimestamp -output (
+                "{0}: Double check result > failed: {1}" -f $keyWords, $ReturnValue.error
+            )
         }
     }
 

@@ -1176,9 +1176,12 @@ function WTW-ProcessParcomp
             $LocationInfo.TestCaseName
     }
 
-    if (($TestType -eq "Base_Compat") -or ($TestType -eq "Base_Parameter")) {
+    if ($TestType -eq "Base_Parameter") {
         $ParcompType = "Base"
         $runParcompType = "Base"
+    } elseif ($TestType -eq "Base_Compat") {
+        $ParcompType = "Base"
+        $runParcompType = "Process"
     } elseif (($TestType -eq "Performance_Parameter") -or ($TestType -eq "Performance")) {
         $ParcompType = "Performance"
         $runParcompType = "Process"
@@ -1249,14 +1252,16 @@ function WTW-ProcessParcomp
     }
 
     # Check parcomp test process number
-    $CheckProcessNumberFlag = WBase-CheckProcessNumber `
-        -ProcessName "parcomp" `
-        -ProcessNumber $ProcessCount `
-        -Remote $true `
-        -Session $Session
-    if (-not $CheckProcessNumberFlag.result) {
-        $ReturnValue.result = $CheckProcessNumberFlag.result
-        $ReturnValue.error = $CheckProcessNumberFlag.error
+    if ($runParcompType -eq "Process") {
+        $CheckProcessNumberFlag = WBase-CheckProcessNumber `
+            -ProcessName "parcomp" `
+            -ProcessNumber $ProcessCount `
+            -Remote $true `
+            -Session $Session
+        if (-not $CheckProcessNumberFlag.result) {
+            $ReturnValue.result = $CheckProcessNumberFlag.result
+            $ReturnValue.error = $CheckProcessNumberFlag.error
+        }
     }
 
     WBase-WriteHashtableToJsonFile `
@@ -1280,7 +1285,6 @@ function WTW-ProcessParcomp
     }
 
     # Double check the output log
-    Win-DebugTimestamp -output ("{0}: Double check the output log" -f $PSSessionName)
     if ($runParcompType -eq "Process") {
         # Wait parcomp test process
         $WaitStatus = WBase-WaitProcessToCompletedByName `
@@ -1291,6 +1295,10 @@ function WTW-ProcessParcomp
             $ReturnValue.result = $WaitStatus.result
             $ReturnValue.error = $WaitStatus.error
         }
+
+        Win-DebugTimestamp -output (
+            "{0}: Double check the output log" -f $PSSessionName
+        )
 
         # Check parcomp test result
         if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
@@ -1308,6 +1316,7 @@ function WTW-ProcessParcomp
                 -Session $Session `
                 -Remote $true `
                 -keyWords "Mbps"
+            $ReturnValue.testOps = $CheckOutput.testOps
             if (-not $CheckOutput.result) {
                 $ReturnValue.result = $CheckOutput.result
                 $ReturnValue.error = $CheckOutput.error
@@ -1329,6 +1338,7 @@ function WTW-ProcessParcomp
                 -Session $Session `
                 -Remote $true `
                 -keyWords "Mbps"
+            $ReturnValue.testOps = $CheckOutput.testOps
             if (-not $CheckOutput.result) {
                 $ReturnValue.result = $CheckOutput.result
                 $ReturnValue.error = $CheckOutput.error

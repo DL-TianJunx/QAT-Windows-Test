@@ -181,7 +181,9 @@ try {
 } catch {
     Win-DebugTimestamp -output $_
 } finally {
-    Gtest-ENV -ENVType "clear" | out-null
+    if ($InitVM) {
+        Gtest-ENV -ENVType "clear" | out-null
+    }
     WBase-CompareTestResult -CompareFile $CompareFile
     Win-DebugTimestamp -output ("Ending $($MyInvocation.MyCommand)")
 }

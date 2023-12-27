@@ -508,8 +508,8 @@ function HV-RestartVMHard
         }
     }
 
-    if ($WaitFlag) {
-        Start-Sleep -Seconds 60
+    if ($WaitFlag -and $StopFlag) {
+        Start-Sleep -Seconds 30
     }
 
     if ($StartFlag) {
@@ -518,8 +518,8 @@ function HV-RestartVMHard
         Start-VM -Name $VMName -Confirm:$false -ErrorAction stop | out-null
     }
 
-    if ($WaitFlag) {
-        Start-Sleep -Seconds 100
+    if ($WaitFlag -and $StartFlag) {
+        Start-Sleep -Seconds 30
     }
 }
 
@@ -638,24 +638,37 @@ function HV-RemoveVM
 
     if (Test-Path -Path $ChildVMPath) {
         $GetVMError = $null
-        $VM = Get-VM -Name $VMName -ErrorAction SilentlyContinue -ErrorVariable GetVMError
+        $VM = Get-VM `
+            -Name $VMName `
+            -ErrorAction SilentlyContinue `
+            -ErrorVariable GetVMError
         if ([String]::IsNullOrEmpty($GetVMError)) {
-            if ($VM.HardDrives.Path -match $ChildVMPath) {
-                if ($VM.State -ne "off") {
-                    HV-RestartVMHard `
-                        -VMName $VMName `
-                        -StopFlag $true `
-                        -TurnOff $true `
-                        -StartFlag $false `
-                        -WaitFlag $false
-                }
+            Win-DebugTimestamp -output ("Removing VM named {0}" -f $VMName)
+            Foreach ($HardDrivesPath in $VM.HardDrives.Path) {
+                if ($HardDrivesPath -match $ChildVMPath) {
+                    if ($VM.State -ne "off") {
+                        HV-RestartVMHard `
+                            -VMName $VMName `
+                            -StopFlag $true `
+                            -TurnOff $true `
+                            -StartFlag $false `
+                            -WaitFlag $false
+                    }
 
-                Win-DebugTimestamp -output ("Removing VM named {0}" -f $VM.Name)
-                Remove-VM -Name $VM.Name -Force -Confirm:$false | out-null
-                Remove-Item -Path $VM.HardDrives.Path -Force -Confirm:$false | out-null
-                $VMPath = "{0}\\{1}" -f $ChildVMPath, $VMName
-                if (Test-Path -Path $VMPath) {
-                    Remove-Item -Path $VMPath -Recurse -Force -Confirm:$false | out-null
+                    $GetVMError = $null
+                    $VM = Get-VM `
+                        -Name $VMName `
+                        -ErrorAction SilentlyContinue `
+                        -ErrorVariable GetVMError
+                    if ([String]::IsNullOrEmpty($GetVMError)) {
+                        Remove-VM -Name $VMName -Force -Confirm:$false | out-null
+                    }
+
+                    Remove-Item -Path $HardDrivesPath -Force -Confirm:$false | out-null
+                    $VMPath = "{0}\\{1}" -f $ChildVMPath, $VMName
+                    if (Test-Path -Path $VMPath) {
+                        Remove-Item -Path $VMPath -Recurse -Force -Confirm:$false | out-null
+                    }
                 }
             }
         } else {
