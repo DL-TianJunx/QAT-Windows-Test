@@ -1285,6 +1285,16 @@ function WTW-ProcessParcomp
     }
 
     # Double check the output log
+    if ($runParcompType -eq "Base") {
+        if (($CompressType -eq "deCompress") -or ($CompressType -eq "All")) {
+            $ReturnValue = $deCompressTestResult
+        }
+
+        if (($CompressType -eq "Compress") -or ($CompressType -eq "All")) {
+            $ReturnValue = $CompressTestResult
+        }
+    }
+
     if ($runParcompType -eq "Process") {
         # Wait parcomp test process
         $WaitStatus = WBase-WaitProcessToCompletedByName `
