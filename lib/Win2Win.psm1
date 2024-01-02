@@ -1126,8 +1126,6 @@ function WTW-ProcessParcomp
         [Parameter(Mandatory=$True)]
         [string]$CompressType = "Compress",
 
-        [bool]$CheckOutputFileFlag = $true,
-
         [string]$CompressProvider = "qat",
 
         [string]$deCompressProvider = "qat",
@@ -1179,15 +1177,31 @@ function WTW-ProcessParcomp
     if ($TestType -eq "Base_Parameter") {
         $ParcompType = "Base"
         $runParcompType = "Base"
-    } elseif ($TestType -eq "Base_Compat") {
+        $CheckOutputFileFlag = $false
+    }
+
+    if ($TestType -eq "Base_Compat") {
         $ParcompType = "Base"
         $runParcompType = "Process"
-    } elseif (($TestType -eq "Performance_Parameter") -or ($TestType -eq "Performance")) {
+        $CheckOutputFileFlag = $true
+    }
+
+    if ($TestType -eq "Performance_Parameter") {
         $ParcompType = "Performance"
         $runParcompType = "Process"
-    } elseif ($TestType -eq "Fallback") {
+        $CheckOutputFileFlag = $true
+    }
+
+    if ($TestType -eq "Performance") {
+        $ParcompType = "Performance"
+        $runParcompType = "Process"
+        $CheckOutputFileFlag = $false
+    }
+
+    if ($TestType -eq "Fallback") {
         $ParcompType = "Fallback"
         $runParcompType = "Process"
+        $CheckOutputFileFlag = $true
     }
 
     $PSSessionName = "Session_{0}" -f $VMNameSuffix
@@ -1354,10 +1368,6 @@ function WTW-ProcessParcomp
                 $ReturnValue.error = $CheckOutput.error
             }
         }
-    } else {
-        $ReturnValue.result = $ParcompTestResult.result
-        $ReturnValue.error = $ParcompTestResult.error
-        $ReturnValue.testOps = $ParcompTestResult.testOps
     }
 
     WBase-WriteHashtableToJsonFile `
@@ -1522,12 +1532,6 @@ function WTW-Parcomp
         $ParcompProcessArgs = "{0} -TestType {1}" -f $ParcompProcessArgs, $TestType
         $ParcompkeyWords = "Parcomp_{0}" -f $_
         $ParcompProcessArgs = "{0} -keyWords {1}" -f $ParcompProcessArgs, $ParcompkeyWords
-
-        if ($TestType -eq "Performance") {
-            $ParcompProcessArgs = "{0} -CheckOutputFileFlag 0" -f $ParcompProcessArgs
-        } else {
-            $ParcompProcessArgs = "{0} -CheckOutputFileFlag 1" -f $ParcompProcessArgs
-        }
 
         # Delete Start Operation Flag file
         if ($TestType -eq "Fallback") {
