@@ -43,16 +43,6 @@ function WTW-RestartVMs
     }
 }
 
-function WTW-RemoveVMs
-{
-    $VMList = Get-VM
-    if (-not [String]::IsNullOrEmpty($VMList)) {
-        Foreach ($VM in $VMList) {
-            HV-RemoveVM -VMName $VM.Name | out-null
-        }
-    }
-}
-
 # About test ENV init
 function WTW-ProcessVMInit
 {
@@ -372,7 +362,10 @@ function WTW-ENVInit
 
     if ($InitVM) {
         # Remove VMs
-        WTW-RemoveVMs | out-null
+        $VMNameList | ForEach-Object {
+            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+            HV-RemoveVM -VMName $VMName -VHDPath $VHDPath | out-null
+        }
 
         # Check VHD file for VMs
         $ParentsVM = "{0}\{1}.vhdx" -f $VHDPath, $LocationInfo.VM.ImageName
@@ -439,6 +432,33 @@ function WTW-ENVInit
                 -PSName $PSSessionName `
                 -IsWin $true `
                 -CheckFlag $false | out-null
+        }
+    }
+}
+
+function WTW-ENVClear
+{
+    Param(
+        [string]$VHDPath = $null,
+
+        [bool]$InitVM = $true,
+
+        [string]$VMSwitchType = "Internal"
+    )
+
+    if ($InitVM) {
+        if ([String]::IsNullOrEmpty($VHDPath)) {
+            $VHDPath = $VHDAndTestFiles.ParentsVMPath
+        }
+
+        $VMNameList = $LocationInfo.VM.NameArray
+        $VMNameList | ForEach-Object {
+            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
+            HV-RemoveVM -VMName $VMName -VHDPath $VHDPath | out-null
+        }
+
+        if ($VMSwitchType -eq "Internal") {
+            HV-VMSwitchRemove -VMSwitchType $VMSwitchType | out-null
         }
     }
 }
@@ -559,11 +579,12 @@ function WTW-EnableAndDisableQatDevice
             -IsWin $true `
             -CheckFlag $false
 
-        $Disableflag = WBase-EnableAndDisableQatDevice -Remote $true `
-                                                       -Session $Session `
-                                                       -Disable $true `
-                                                       -Enable $false `
-                                                       -Wait $false
+        $Disableflag = WBase-EnableAndDisableQatDevice `
+            -Remote $true `
+            -Session $Session `
+            -Disable $true `
+            -Enable $false `
+            -Wait $false
 
         if ($PNPCheckflag) {
             $PNPCheckflag = $Disableflag
@@ -581,11 +602,12 @@ function WTW-EnableAndDisableQatDevice
             -PSName $PSSessionName `
             -IsWin $true
 
-        $Enableflag = WBase-EnableAndDisableQatDevice -Remote $true `
-                                                      -Session $Session `
-                                                      -Disable $false `
-                                                      -Enable $true `
-                                                      -Wait $false
+        $Enableflag = WBase-EnableAndDisableQatDevice `
+            -Remote $true `
+            -Session $Session `
+            -Disable $false `
+            -Enable $true `
+            -Wait $false
 
         if ($PNPCheckflag) {
             $PNPCheckflag = $Enableflag

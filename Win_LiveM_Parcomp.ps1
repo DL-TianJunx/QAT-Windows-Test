@@ -196,10 +196,12 @@ try {
                     WTW-ENVInit `
                         -VMVFOSConfig $VMVFOSConfig `
                         -VHDPath $LocationInfo.Domain.S2DStorage `
+                        -VMSwitchType "External" `
                         -InitVM $true | out-null
                 } else {
                     WTW-ENVInit `
                         -VMVFOSConfig $VMVFOSConfig `
+                        -VMSwitchType "External" `
                         -InitVM $true | out-null
                 }
 

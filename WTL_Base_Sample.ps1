@@ -147,6 +147,9 @@ try {
                 WBase-WriteTestResult -TestResult $TestCaseResultsList
             }
         }
+
+        Win-DebugTimestamp -output ("Clear test environment....")
+        WTW-ENVClear -InitVM $InitVM | out-null
     }
 } catch {
     Win-DebugTimestamp -output $_

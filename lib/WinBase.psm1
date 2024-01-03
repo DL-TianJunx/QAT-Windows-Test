@@ -4802,4 +4802,5 @@ function WBase-CNGTest
 }
 
 
-Export-ModuleMember -Function *-* -Variable *-*
+Export-ModuleMember -Variable *-*
+Export-ModuleMember -Function *-*

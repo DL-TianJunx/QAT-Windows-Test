@@ -340,16 +340,6 @@ function HV-VMVFConfigInit
         if ($VMMemory -gt 32) {$VMMemory = 32}
         $LocationInfo.VM.Memory = "{0}GiB" -f $VMMemory
 
-        # WorkAround: Start
-        #     ArcherCity76 and ArcherCity74 must been used only one External VMSwitch for domain network
-        if (($env:COMPUTERNAME -eq "AC74") -or
-            ($env:COMPUTERNAME -eq "ArcherCity74") -or
-            ($env:COMPUTERNAME -eq "AC76") -or
-            ($env:COMPUTERNAME -eq "ArcherCity76")) {
-            $VMSwitchType = "External"
-        }
-        # WorkAround: End
-
         $LocationInfo.VM.Switch = HV-VMSwitchCreate -VMSwitchType $VMSwitchType
 
         if ($LocationInfo.VM.OS -eq "windows2019") {$LocationInfo.VM.ImageName = "windows_server_2019_19624"}
@@ -643,7 +633,6 @@ function HV-RemoveVM
             -ErrorAction SilentlyContinue `
             -ErrorVariable GetVMError
         if ([String]::IsNullOrEmpty($GetVMError)) {
-            Win-DebugTimestamp -output ("Removing VM named {0}" -f $VMName)
             Foreach ($HardDrivesPath in $VM.HardDrives.Path) {
                 if ($HardDrivesPath -match $ChildVMPath) {
                     if ($VM.State -ne "off") {
@@ -661,12 +650,22 @@ function HV-RemoveVM
                         -ErrorAction SilentlyContinue `
                         -ErrorVariable GetVMError
                     if ([String]::IsNullOrEmpty($GetVMError)) {
+                        Win-DebugTimestamp -output ("Remove VM > {0}" -f $VMName)
                         Remove-VM -Name $VMName -Force -Confirm:$false | out-null
                     }
 
-                    Remove-Item -Path $HardDrivesPath -Force -Confirm:$false | out-null
+                    if (Test-Path -Path $HardDrivesPath) {
+                        Win-DebugTimestamp -output (
+                            "Remove vhdx file > {0}" -f $HardDrivesPath
+                        )
+                        Remove-Item -Path $HardDrivesPath -Force -Confirm:$false | out-null
+                    }
+
                     $VMPath = "{0}\\{1}" -f $ChildVMPath, $VMName
                     if (Test-Path -Path $VMPath) {
+                        Win-DebugTimestamp -output (
+                            "Remove directory > {0}" -f $VMPath
+                        )
                         Remove-Item -Path $VMPath -Recurse -Force -Confirm:$false | out-null
                     }
                 }
@@ -761,6 +760,8 @@ function HV-VMSwitchCreate
     }
 
     if ($VMSwitchType -eq "External") {
+        HV-VMSwitchRemove -VMSwitchType $VMSwitchType | Out-Null
+
         $GetVMSwitchError = $null
         $VMSwitch = Get-VMSwitch `
             -Name $STVNetNat.SwitchExternal `
@@ -812,6 +813,24 @@ function HV-VMSwitchCreate
     }
 
     return $ReturnValue
+}
+
+function HV-VMSwitchRemove
+{
+    Param(
+        [string]$VMSwitchType = "Internal"
+    )
+
+    $GetVMSwitchError = $null
+    $VMSwitchArray = Get-VMSwitch `
+        -SwitchType $VMSwitchType `
+        -ErrorAction SilentlyContinue `
+        -ErrorVariable GetVMSwitchError
+
+    if ([String]::IsNullOrEmpty($GetVMSwitchError)) {
+        Win-DebugTimestamp -output ("Host: Remove VM switch type: {0}" -f $VMSwitchType)
+        Get-VMSwitch -SwitchType $VMSwitchType | Remove-VMSwitch | Out-Null
+    }
 }
 
 # About VF

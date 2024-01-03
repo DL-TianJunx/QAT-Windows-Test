@@ -257,6 +257,11 @@ try {
                     WBase-WriteTestResult -TestResult $TestCaseResultsList
                 }
             }
+
+            if (-not $CompareFlag) {
+                Win-DebugTimestamp -output ("Clear test environment....")
+                WTW-ENVClear -InitVM $InitVM | out-null
+            }
         }
 
         if ($CompareFlag) {

@@ -1,4 +1,5 @@
 
+# About PS session
 function Domain-PSSessionCreate
 {
     Param(
@@ -116,6 +117,7 @@ function Domain-PSSessionCheck
     return $ReturnValue
 }
 
+# About Gtest ENV
 function Domain-RemoteInfoInit
 {
     Param(
@@ -295,6 +297,7 @@ function Domain-RemoteVMVFConfigInit
     return $ReturnValue
 }
 
+# About Live Migration operation
 function Domain-RemoveVMs
 {
     Param(
@@ -638,6 +641,7 @@ function Domain-MoveVM
     return $ReturnValue
 }
 
+# About process runner
 function Domain-ProcessParcomp
 {
     Param(

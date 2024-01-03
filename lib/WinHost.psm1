@@ -1,20 +1,18 @@
 
 function WinHost-ENVInit
 {
-    # Check QAT devices
-    $CheckFlag = WBase-CheckQatDevice `
-        -Remote $false `
-        -CheckStatus "OK"
-    if (-not $CheckFlag.result) {
-        throw ("Host: The number of QAT devices is incorrect")
-    }
+    $reStartFlag = $false
 
     # Check driver verifier
     $CheckFlag = UT-CheckDriverVerifier `
         -CheckFlag $LocationInfo.VerifierMode `
         -Remote $false
     if (-not $CheckFlag) {
-        throw ("Host: Driver verifier is incorrect")
+        Win-DebugTimestamp -output ("Host: Driver verifier is incorrect")
+        $reStartFlag = $true
+        UT-SetDriverVerifier `
+            -DriverVerifier $LocationInfo.VerifierMode `
+            -Remote $false | out-null
     }
 
     # Check test mode
@@ -22,7 +20,11 @@ function WinHost-ENVInit
         -CheckFlag $LocationInfo.TestMode `
         -Remote $false
     if (-not $CheckFlag) {
-        throw ("Host: Test mode is incorrect")
+        Win-DebugTimestamp -output ("Host: Test mode is incorrect")
+        $reStartFlag = $true
+        UT-SetTestMode `
+            -TestMode $LocationInfo.TestMode `
+            -Remote $false | out-null
     }
 
     # Check debug mode
@@ -30,7 +32,15 @@ function WinHost-ENVInit
         -CheckFlag $LocationInfo.DebugMode `
         -Remote $false
     if (-not $CheckFlag) {
-        throw ("Host: Debug mode is incorrect")
+        Win-DebugTimestamp -output ("Host: Debug mode is incorrect")
+        $reStartFlag = $true
+        UT-SetDebugMode `
+            -DebugMode $LocationInfo.DebugMode `
+            -Remote $false | out-null
+    }
+
+    if ($reStartFlag) {
+        throw ("Host: Need restart test machine for the changes to take effect")
     }
 
     # Check UQ mode
@@ -38,7 +48,22 @@ function WinHost-ENVInit
         -CheckFlag $LocationInfo.UQMode `
         -Remote $false
     if (-not $CheckFlag) {
-        throw ("Host: UQ mode is incorrect")
+        Win-DebugTimestamp -output ("Host: UQ mode is incorrect")
+        UT-SetUQMode `
+            -UQMode $LocationInfo.UQMode `
+            -Remote $false | out-null
+
+        UT-WorkAround `
+            -Remote $false `
+            -DisableFlag $DisableDeviceFlag | out-null
+    }
+
+    # Check QAT devices
+    $CheckFlag = WBase-CheckQatDevice `
+        -Remote $false `
+        -CheckStatus "OK"
+    if (-not $CheckFlag.result) {
+        throw ("Host: The number of QAT devices is incorrect")
     }
 }
 
