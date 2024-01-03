@@ -72,12 +72,13 @@ function Gtest-ProcessENV
 
             $QualifierPath = "{0}:\" -f $QualifierName
             $CopyPath = "{0}\CompressionFiles\*" -f $SourcePath
-            $DestinationPath = "{0}:\CompressionFiles" -f $QualifierName
+            $DestinationPath = "{0}:\CompressionFiles\" -f $QualifierName
             if (Test-Path -Path $SourcePath) {
                 if (Test-Path -Path $QualifierPath) {
                     $DisplayRoot = (Get-PSDrive -Name $QualifierName).DisplayRoot
                     if ($DisplayRoot -ne $SourcePath) {
                         if (-not (Test-Path -Path $DestinationPath)) {
+                            New-Item -Path $DestinationPath -ItemType Directory | out-null
                             Copy-Item `
                                 -Path $CopyPath `
                                 -Destination $DestinationPath `
@@ -878,10 +879,9 @@ function Gtest-Process
         if ($ListFlag) {
             $ProcessArgs = "{0} --gtest_list_tests" -f $ProcessArgs
         }
-        $keyWordsTmp = $GtestArgs.split("*")[1]
-        $keyWordsTmp = $keyWordsTmp.split(":-")[0]
+
         if ($Remote) {
-            $ProcessKeyWords = "Gtest_{0}_{1}" -f $keyWordsTmp, $VMNameSuffix
+            $ProcessKeyWords = "Gtest_{0}_{1}" -f $GtestArgs, $VMNameSuffix
 
             $GtestProcess = WBase-StartProcess `
                 -ProcessFilePath $ProcessFilePath `
@@ -890,7 +890,7 @@ function Gtest-Process
                 -Remote $Remote `
                 -Session $Session
         } else {
-            $ProcessKeyWords = "Gtest_{0}_Host" -f $keyWordsTmp
+            $ProcessKeyWords = "Gtest_{0}_Host" -f $GtestArgs
 
             $GtestProcess = WBase-StartProcess `
                 -ProcessFilePath $ProcessFilePath `
@@ -933,10 +933,8 @@ function Gtest-Process
 
     # Check Gtest output log
     Foreach ($GtestArgs in $GtestArgsArray) {
-        $keyWordsTmp = $GtestArgs.split("*")[1]
-        $keyWordsTmp = $keyWordsTmp.split(":-")[0]
         if ($Remote) {
-            $ProcessKeyWords = "Gtest_{0}_{1}" -f $keyWordsTmp, $VMNameSuffix
+            $ProcessKeyWords = "Gtest_{0}_{1}" -f $GtestArgs, $VMNameSuffix
 
             $GtestProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$ProcessKeyWords].Output `
@@ -948,7 +946,7 @@ function Gtest-Process
                 -CheckResultFlag $true `
                 -CheckResultType "Gtest"
         } else {
-            $ProcessKeyWords = "Gtest_{0}_Host" -f $keyWordsTmp
+            $ProcessKeyWords = "Gtest_{0}_Host" -f $GtestArgs
 
             $GtestProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$ProcessKeyWords].Output `

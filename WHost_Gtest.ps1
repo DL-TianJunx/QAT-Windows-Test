@@ -6,10 +6,6 @@ Param(
 
     [bool]$RunOnLocal = $false,
 
-    [bool]$InitVM = $true,
-
-    [array]$VMVFOSConfigs = $null,
-
     [bool]$HVMode = $false,
 
     [bool]$UQMode = $false,
@@ -90,6 +86,7 @@ try {
         $LocalBuildPath = $job2.bld_path
     }
 
+    $LocationInfo.HVMode = $false
     $LocationInfo.IsWin = $true
     $LocationInfo.VM.IsWin = $true
     $PFVFDriverPath = WBase-GetDriverPath -BuildPath $LocalBuildPath
@@ -101,22 +98,13 @@ try {
     # Special: For All
     $ConfigType = "Gtest"
     $ListFlag = $false
-
-    if ($LocationInfo.HVMode) {
-        $Remote = $true
-        $Platform = "HV"
-        if ([String]::IsNullOrEmpty($VMVFOSConfigs)) {
-            [System.Array]$VMVFOSConfigs = HV-GenerateVMVFConfig -ConfigType $ConfigType
-        }
+    $Remote = $false
+    if ($LocationInfo.UQMode) {
+        $Platform = "UQ"
     } else {
-        $Remote = $false
-        if ($LocationInfo.UQMode) {
-            $Platform = "UQ"
-        } else {
-            $Platform = "NUQ"
-        }
-        [System.Array]$VMVFOSConfigs = ("Host")
+        $Platform = "NUQ"
     }
+    [System.Array]$VMVFOSConfigs = ("Host")
 
     Foreach ($VMVFOSConfig in $VMVFOSConfigs) {
         $testNameHeader = "{0}_{1}_{2}" -f
@@ -125,19 +113,8 @@ try {
             $VMVFOSConfig
 
         Win-DebugTimestamp -output ("Initialize test environment....")
-        if ($Remote) {
-            WTW-ENVInit `
-                -VMVFOSConfig $VMVFOSConfig `
-                -InitVM $InitVM `
-                -VMSwitchType "External" | out-null
-
-            if ($InitVM) {
-                Gtest-ENV -ENVType "init" | out-null
-            }
-        } else {
-            WinHost-ENVInit | out-null
-            Gtest-ENV -ENVType "init" | out-null
-        }
+        WinHost-ENVInit | out-null
+        Gtest-ENV -ENVType "init" | out-null
 
         Win-DebugTimestamp -output ("Start to run test case....")
         Win-DebugTimestamp -output (
@@ -181,9 +158,7 @@ try {
 } catch {
     Win-DebugTimestamp -output $_
 } finally {
-    if ($InitVM) {
-        Gtest-ENV -ENVType "clear" | out-null
-    }
+    Gtest-ENV -ENVType "clear" | out-null
     WBase-CompareTestResult -CompareFile $CompareFile
     Win-DebugTimestamp -output ("Ending $($MyInvocation.MyCommand)")
 }
