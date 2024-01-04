@@ -2296,6 +2296,12 @@ function WBase-CheckProcessOutput
     $ReturnValue = [hashtable] @{
         result = $true
         error = "no_error"
+        process = [hashtable] @{
+            output = $null
+            error = $null
+        }
+        testResult = $null
+        testcases = $null
     }
 
     # Check output and error log
@@ -2311,22 +2317,22 @@ function WBase-CheckProcessOutput
         $ReturnValue = [hashtable] @{
             result = $true
             error = "no_error"
+            process = [hashtable] @{
+                output = $null
+                error = $null
+            }
         }
 
         if (Test-Path -Path $ProcessOutputLogPath) {
-            $ProcessOutputLog = Get-Content -Path $ProcessOutputLogPath -Raw
-        } else {
-            $ProcessOutputLog = $null
+            $ReturnValue.process.output = Get-Content -Path $ProcessOutputLogPath -Raw
         }
 
         if (Test-Path -Path $ProcessErrorLogPath) {
-            $ProcessErrorLog = Get-Content -Path $ProcessErrorLogPath -Raw
-        } else {
-            $ProcessErrorLog = $null
+            $ReturnValue.process.error = Get-Content -Path $ProcessErrorLogPath -Raw
         }
 
-        if ([String]::IsNullOrEmpty($ProcessOutputLog)) {
-            if ([String]::IsNullOrEmpty($ProcessErrorLog)) {
+        if ([String]::IsNullOrEmpty($ReturnValue.process.output)) {
+            if ([String]::IsNullOrEmpty($ReturnValue.process.error)) {
                 if ($ReturnValue.result) {
                     $ReturnValue.result = $false
                     $ReturnValue.error = "no_output"
@@ -2338,7 +2344,7 @@ function WBase-CheckProcessOutput
                 }
             }
         } else {
-            if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+            if (-not [String]::IsNullOrEmpty($ReturnValue.process.error)) {
                 if ($ReturnValue.result) {
                     $ReturnValue.result = $false
                     $ReturnValue.error = "get_error"
@@ -2369,6 +2375,10 @@ function WBase-CheckProcessOutput
             "{0}: Double check result > failed: {1}" -f $keyWords, $ReturnValue.error
         )
     }
+
+    $CheckOutputLogFile = $ProcessOutputLogPath
+    $CheckErrorLogFile = $ProcessErrorLogPath
+    $CheckResultFile = $ProcessResultPath
 
     # Copy outputlog and errorlog files to BertaResultPath for remote
     if ($Remote) {
@@ -2487,6 +2497,10 @@ function WBase-CheckProcessOutput
                 } -ArgumentList $ProcessResultPath
             }
         }
+
+        $CheckOutputLogFile = $ProcessOutputLogDestination
+        $CheckErrorLogFile = $ProcessErrorLogDestination
+        $CheckResultFile = $ProcessResultPathDestination
     }
 
     # Check test result
@@ -2496,16 +2510,6 @@ function WBase-CheckProcessOutput
                 $keyWords,
                 $CheckResultType
         )
-
-        if ($Remote) {
-            $CheckOutputLogFile = $ProcessOutputLogDestination
-            $CheckErrorLogFile = $ProcessErrorLogDestination
-            $CheckResultFile = $ProcessResultPathDestination
-        } else {
-            $CheckOutputLogFile = $ProcessOutputLogPath
-            $CheckErrorLogFile = $ProcessErrorLogPath
-            $CheckResultFile = $ProcessResultPath
-        }
 
         if ($CheckResultType -eq "Base") {
             if ([System.IO.File]::Exists($CheckResultFile)) {
@@ -2517,7 +2521,7 @@ function WBase-CheckProcessOutput
                 } else {
                     $ReturnValue.result = $ProcessResultHashtable.result
                     $ReturnValue.error = $ProcessResultHashtable.error
-                    $ReturnValue["testResult"] = $ProcessResultHashtable
+                    $ReturnValue.testResult = $ProcessResultHashtable
                 }
             } else {
                 $ReturnValue.result = $false
@@ -2540,7 +2544,7 @@ function WBase-CheckProcessOutput
 
                 $ReturnValue.result = $CheckResult.result
                 $ReturnValue.error = $CheckResult.error
-                $ReturnValue["testcases"] = $CheckResult.testcases
+                $ReturnValue.testcases = $CheckResult.testcases
             }
         }
 
@@ -2556,37 +2560,31 @@ function WBase-CheckProcessOutput
     }
 
     if ($ReturnValue.result) {
-        if ($Remote) {
-            Win-DebugTimestamp -output (
-                "For more info, please double check output log > {0}" -f $ProcessOutputLogDestination
-            )
+        Win-DebugTimestamp -output (
+            "For more info, please double check output log > {0}" -f $CheckOutputLogFile
+        )
 
-            Win-DebugTimestamp -output (
-                "For more info, please double check error log > {0}" -f $ProcessErrorLogDestination
-            )
-        } else {
-            Win-DebugTimestamp -output (
-                "For more info, please double check output log > {0}" -f $ProcessOutputLogPath
-            )
-
-            Win-DebugTimestamp -output (
-                "For more info, please double check error log > {0}" -f $ProcessErrorLogPath
-            )
-        }
+        Win-DebugTimestamp -output (
+            "For more info, please double check error log > {0}" -f $CheckErrorLogFile
+        )
 
         Win-DebugTimestamp -output (
             "The process({0}) ---------------------- passed" -f $keyWords
         )
     } else {
-        if (-not [String]::IsNullOrEmpty($ProcessOutputLog)) {
+        if (-not [String]::IsNullOrEmpty($ReturnValue.process.output)) {
             Win-DebugTimestamp -output (
-                "{0}: Get output log of the process > `r`n{1}" -f $keyWords, $ProcessOutputLog
+                "{0}: Get output log of the process > `r`n{1}" -f
+                    $keyWords,
+                    $ReturnValue.process.output
             )
         }
 
-        if (-not [String]::IsNullOrEmpty($ProcessErrorLog)) {
+        if (-not [String]::IsNullOrEmpty($ReturnValue.process.error)) {
             Win-DebugTimestamp -output (
-                "{0}: Get error log of the process > `r`n{1}" -f $keyWords, $ProcessErrorLog
+                "{0}: Get error log of the process > `r`n{1}" -f
+                    $keyWords,
+                    $ReturnValue.process.error
             )
         }
 
