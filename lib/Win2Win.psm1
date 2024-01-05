@@ -1199,7 +1199,7 @@ function WTW-ProcessParcomp
     if ($TestType -eq "Base_Parameter") {
         $ParcompType = "Base"
         $runParcompType = "Base"
-        $CheckOutputFileFlag = $false
+        $CheckOutputFileFlag = $true
     }
 
     if ($TestType -eq "Base_Compat") {
