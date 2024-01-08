@@ -340,6 +340,8 @@ function HV-VMVFConfigInit
         if ($VMMemory -gt 32) {$VMMemory = 32}
         $LocationInfo.VM.Memory = "{0}GiB" -f $VMMemory
 
+
+
         $LocationInfo.VM.Switch = HV-VMSwitchCreate -VMSwitchType $VMSwitchType
 
         if ($LocationInfo.VM.OS -eq "windows2019") {$LocationInfo.VM.ImageName = "windows_server_2019_19624"}
@@ -829,7 +831,7 @@ function HV-VMSwitchRemove
 
     if ([String]::IsNullOrEmpty($GetVMSwitchError)) {
         Win-DebugTimestamp -output ("Host: Remove VM switch type: {0}" -f $VMSwitchType)
-        Get-VMSwitch -SwitchType $VMSwitchType | Remove-VMSwitch | Out-Null
+        Get-VMSwitch -SwitchType $VMSwitchType | Remove-VMSwitch -Force -Confirm:$false | Out-Null
     }
 }
 
