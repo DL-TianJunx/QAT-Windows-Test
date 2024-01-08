@@ -881,7 +881,7 @@ function Gtest-Process
         }
 
         if ($Remote) {
-            $ProcessKeyWords = "Gtest_{0}_{1}" -f $GtestArgs, $VMNameSuffix
+            $ProcessKeyWords = "Gtest_{0}_{1}" -f $GtestArgs.replace("*", "_"), $VMNameSuffix
 
             $GtestProcess = WBase-StartProcess `
                 -ProcessFilePath $ProcessFilePath `
@@ -934,7 +934,7 @@ function Gtest-Process
     # Check Gtest output log
     Foreach ($GtestArgs in $GtestArgsArray) {
         if ($Remote) {
-            $ProcessKeyWords = "Gtest_{0}_{1}" -f $GtestArgs, $VMNameSuffix
+            $ProcessKeyWords = "Gtest_{0}_{1}" -f $GtestArgs.replace("*", "_"), $VMNameSuffix
 
             $GtestProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$ProcessKeyWords].Output `
@@ -946,7 +946,7 @@ function Gtest-Process
                 -CheckResultFlag $true `
                 -CheckResultType "Gtest"
         } else {
-            $ProcessKeyWords = "Gtest_{0}_Host" -f $GtestArgs
+            $ProcessKeyWords = "Gtest_{0}_Host" -f $GtestArgs.replace("*", "_")
 
             $GtestProcessResult = WBase-CheckProcessOutput `
                 -ProcessOutputLogPath $ProcessList[$ProcessKeyWords].Output `
