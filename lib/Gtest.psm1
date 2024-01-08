@@ -890,7 +890,7 @@ function Gtest-Process
                 -Remote $Remote `
                 -Session $Session
         } else {
-            $ProcessKeyWords = "Gtest_{0}_Host" -f $GtestArgs
+            $ProcessKeyWords = "Gtest_{0}_Host" -f $GtestArgs.replace("*", "_")
 
             $GtestProcess = WBase-StartProcess `
                 -ProcessFilePath $ProcessFilePath `
