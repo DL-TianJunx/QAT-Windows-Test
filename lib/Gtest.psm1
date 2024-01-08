@@ -716,7 +716,7 @@ function Gtest-GetTestCases
             if ($TestResultLine -match "==========") {
                 $TotalResult = $TestResultLineTmp
                 Win-DebugTimestamp -output (" Total: {0}" -f $TotalResult)
-                $TotalResult = $TotalResult.split(" tests")[0]
+                $TotalResult = $TotalResult.split(" test")[0]
                 $TotalResult = $TotalResult.split(" ")[0]
                 if ($TotalResult -ne "Running") {
                     if ([int]($TotalResult) -ne $TotalNumber) {
@@ -731,7 +731,7 @@ function Gtest-GetTestCases
 
             if ($TestResultLine -match " PASSED ") {
                 $PassResult = $TestResultLineTmp
-                $PassResult = $PassResult.split(" tests")[0]
+                $PassResult = $PassResult.split(" test")[0]
                 Win-DebugTimestamp -output ("Passed: {0}" -f $PassResult)
                 if ([int]$PassResult -ne $PassNumber) {
                     Win-DebugTimestamp -output ("   Get: {0}" -f $PassNumber)
