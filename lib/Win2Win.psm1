@@ -365,6 +365,7 @@ function WTW-ENVInit
         $VMNameList | ForEach-Object {
             $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
             HV-RemoveVM -VMName $VMName -VHDPath $VHDPath | out-null
+            HV-RemoveVM -VMName $VMName | out-null
         }
 
         # Check VHD file for VMs

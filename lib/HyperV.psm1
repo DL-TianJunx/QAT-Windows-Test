@@ -584,6 +584,11 @@ function HV-CreateVM
             -AutomaticStopAction TurnOff `
             -ErrorAction Stop | out-null
 
+        Set-VMProcessor `
+            -VMName $VMName `
+            -CompatibilityForMigrationEnabled $false `
+            -CompatibilityForOlderOperatingSystemsEnabled $false | out-null
+
         $VMDvd = Get-VMDvdDrive -VMName $VMName
         Remove-VMDvdDrive `
             -VMName $VMName `
