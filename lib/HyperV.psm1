@@ -639,7 +639,7 @@ function HV-RemoveVM
             -ErrorVariable GetVMError
         if ([String]::IsNullOrEmpty($GetVMError)) {
             Foreach ($HardDrivesPath in $VM.HardDrives.Path) {
-                if ($HardDrivesPath -match $ChildVMPath) {
+                if ($HardDrivesPath -match "WTWChildVhds") {
                     if ($VM.State -ne "off") {
                         HV-RestartVMHard `
                             -VMName $VMName `

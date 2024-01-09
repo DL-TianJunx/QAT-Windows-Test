@@ -4,6 +4,8 @@ Param(
 
     [bool]$RunOnLocal = $false,
 
+    [bool]$UseS2D = $false,
+
     [array]$VMVFOSConfigs = $null,
 
     [bool]$UQMode = $false,
@@ -87,7 +89,6 @@ try {
     $LocationInfo.HVMode = $true
     $LocationInfo.IsWin = $true
     $LocationInfo.VM.IsWin = $true
-    $UseS2D = $false
     $PFVFDriverPath = WBase-GetDriverPath -BuildPath $LocalBuildPath
 
     WBase-LocationInfoInit -BertaResultPath $BertaResultPath `
