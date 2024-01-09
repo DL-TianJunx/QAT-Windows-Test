@@ -760,7 +760,7 @@ function HV-VMSwitchCreate
     }
 
     if ($VMSwitchType -eq "External") {
-        HV-VMSwitchRemove -VMSwitchType $VMSwitchType | Out-Null
+        HV-VMSwitchRemove -VMSwitchType "Internal" | Out-Null
 
         $GetVMSwitchError = $null
         $VMSwitch = Get-VMSwitch `

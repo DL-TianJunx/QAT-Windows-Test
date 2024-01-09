@@ -906,7 +906,11 @@ function UT-CheckDebugMode
     )
 
     if ([String]::IsNullOrEmpty($GetValue)) {
-        $ReturnValue = $true
+        if ($CheckFlag) {
+            $ReturnValue = $false
+        } else {
+            $ReturnValue = $true
+        }
     } else {
         if ($GetValue -eq "Yes") {
             $DebugMode = $true
