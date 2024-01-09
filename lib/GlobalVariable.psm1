@@ -15,7 +15,7 @@ $global:LocalInfoFilePath = "{0}\\LocationInfo.json" -f $LocalProcessPath
 $global:RemoteInfoFilePath = "{0}\\RemoteInfo.json" -f $LocalProcessPath
 $global:StartOperationFlag = "StartOperationFlag"
 $global:OperationCompletedFlag = "OperationCompletedFlag"
-$global:DomainName = "QATWSTV"
+$global:DomainName = "DLSTV"
 
 # About QAT driver
 $global:Certificate = [hashtable] @{
