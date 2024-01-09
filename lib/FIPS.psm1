@@ -341,6 +341,7 @@ function FIPS-Process {
                 $CheckOutput = WBase-CheckOutputLog `
                     -TestOutputLog $outProcess.process.output `
                     -TestErrorLog $outProcess.process.Error `
+                    -checkFIPSLog $true `
                     -Remote $Remote
 
                 $ReturnValue.result = $CheckOutput.result
