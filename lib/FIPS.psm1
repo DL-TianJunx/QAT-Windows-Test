@@ -288,7 +288,6 @@ function FIPS-Process {
     $splitValue = [int]($tagLen / 4)
     if ($direction -eq "encrypt") {
         if ($outputResponse -match "SymmEncrypt failed") {
-            # $test_results["test encrypt"] = "encrypt Failed"
             $ReturnValue.result = $false
             Win-DebugTimestamp -output ( "`t test $($tcId) encrypt Failed!" )
         }
@@ -356,7 +355,6 @@ function FIPS-Process {
             $outputResponse = Get-Content $outProcess.process.Output
             $splitValue = [int]($tagLen / 4)
             if ($outputResponse -match "decrypt failed") {
-                # $test_results["test decrypt"] = "decrypt Failed"
                 $ReturnValue.result = $false
                 Win-DebugTimestamp -output ( "`t test $($tcId) decrypt Failed!")
             }
@@ -371,12 +369,10 @@ function FIPS-Process {
                             
                 $compareValue = FIPSCompareMD5 -pt_before $pt_encrypt_file -pt_after $pt_decrypt_file  
                 if ($compareValue) {
-                    # $test_results["result"] = "Passed"
                     $ReturnValue.result = $true
                     Win-DebugTimestamp -output ( "`t test $($tcId) Passed!")
                 }
                 else {
-                    # $test_results["result"] = "Failed"
                     $ReturnValue.result = $false
                     Win-DebugTimestamp -output ( "`t test $($tcId) Failed!")
                 }
@@ -385,7 +381,6 @@ function FIPS-Process {
     }
     else {
         if ($outputResponse -match "decrypt failed") {
-            # $test_results["test decrypt"] = "decrypt Failed"
             $ReturnValue.result = $false
             Win-DebugTimestamp -output ( "`t test $($tcId) decrypt Failed!")
         }
