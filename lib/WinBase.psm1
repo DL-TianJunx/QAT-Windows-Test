@@ -13,6 +13,7 @@ Import-Module "$QATTESTPATH\\lib\\Win2Win.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\WinHost.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\Domain.psm1" -Force -DisableNameChecking
 Import-Module "$QATTESTPATH\\lib\\GTest.psm1" -Force -DisableNameChecking
+Import-Module "$QATTESTPATH\\lib\\FIPS.psm1" -Force -DisableNameChecking
 
 # About Init
 function Win-DebugTimestamp
