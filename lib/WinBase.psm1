@@ -2693,6 +2693,8 @@ function WBase-CheckOutputLog
         [Parameter(Mandatory=$True)]
         [string]$TestErrorLog,
 
+        [bool]$checkFIPSLog,
+
         [Parameter(Mandatory=$True)]
         [bool]$Remote,
 
@@ -2784,7 +2786,7 @@ function WBase-CheckOutputLog
             $ReturnValue.error = "process_error"
         }
     } else {
-        $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $TestOutputLog
+        $CheckOutputFlag = WBase-CheckOutputLogError -OutputLog $TestOutputLog -checkFIPSLog $checkFIPSLog
         if ($CheckOutputFlag) {
             if ([String]::IsNullOrEmpty($keyWords)) {
                 Win-DebugTimestamp -output ("{0}: The test is passed" -f $LogKeyWord)
@@ -2818,7 +2820,9 @@ function WBase-CheckOutputLogError
 {
     Param(
         [Parameter(Mandatory=$True)]
-        [object]$OutputLog
+        [object]$OutputLog,
+
+        [bool]$checkFIPSLog
     )
 
     # Please check the output log file is not null at first
@@ -2826,16 +2830,26 @@ function WBase-CheckOutputLogError
 
     $OutputLog | ForEach-Object {
         $_ = $_ -replace "\s{2,}", " "
-        if ($_ -match "error") {
-            $ReturnValue = $false
-        }
-
-        if ($_ -match "Error") {
-            $ReturnValue = $false
-        }
-
-        if ($_ -match "ERROR") {
-            $ReturnValue = $false
+        if($checkFIPSLog){
+            if ($_ -ceq "Error") {
+                $ReturnValue = $false
+            }
+    
+            if ($_ -ceq "ERROR") {
+                $ReturnValue = $false
+            }
+        }else{
+            if ($_ -match "error") {
+                $ReturnValue = $false
+            }
+    
+            if ($_ -match "Error") {
+                $ReturnValue = $false
+            }
+    
+            if ($_ -match "ERROR") {
+                $ReturnValue = $false
+            }
         }
 
         if ($_ -match "Invalid") {
