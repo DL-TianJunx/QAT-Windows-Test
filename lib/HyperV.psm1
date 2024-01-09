@@ -629,7 +629,7 @@ function HV-RemoveVM
         $VHDPath = $VHDAndTestFiles.ParentsVMPath
     }
 
-    $ChildVMPath = "{0}\\WTWChildVhds" -f $VHDPath
+    $ChildVMPath = "{0}\WTWChildVhds" -f $VHDPath
 
     if (Test-Path -Path $ChildVMPath) {
         $GetVMError = $null
