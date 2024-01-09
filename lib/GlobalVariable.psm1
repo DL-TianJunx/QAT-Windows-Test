@@ -393,8 +393,8 @@ $global:LocationInfo = [hashtable] @{
         ExecutingServer = $null
         TargetServer = $null
         PSSessionName = "PSSession_Domain"
-        DriverPath = "{0}\Domain_QAT_driver" -f $STVWinPath
-        ResultPath = "{0}\Domain_test_result" -f $STVWinPath
+        DriverPath = "C:\Domain_QAT_driver"
+        ResultPath = "C:\Domain_test_result"
         S2DStorage = "\\QatServer305\vhd"
     }
 }
