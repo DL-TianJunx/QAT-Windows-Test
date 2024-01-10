@@ -346,7 +346,9 @@ function Domain-RemoveVMs
             }
 
             Foreach ($VMParh in $VMArray) {
-                Remove-Item -Path $VMParh -Force -Confirm:$false | out-null
+                if (Test-Path -Path $VMParh) {
+                    Remove-Item -Path $VMParh -Force -Confirm:$false | out-null
+                }
             }
         } else {
             Invoke-Command -Session $DomainPSSession -ScriptBlock {
