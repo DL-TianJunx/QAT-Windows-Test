@@ -2023,9 +2023,9 @@ function WBase-StartProcess
     $ReturnValue.Error = $ProcessErrorLogPath
     $ReturnValue.Result = $ProcessResultPath
 
-    Win-DebugTimestamp -output ("{0}: Process output file > {1}" -f $keyWords, $ReturnValue.Output)
-    Win-DebugTimestamp -output ("{0}: Process error file > {1}" -f $keyWords, $ReturnValue.Error)
-    Win-DebugTimestamp -output ("{0}: Process result file > {1}" -f $keyWords, $ReturnValue.Result)
+    # Win-DebugTimestamp -output ("{0}: Process output file > {1}" -f $keyWords, $ReturnValue.Output)
+    # Win-DebugTimestamp -output ("{0}: Process error file > {1}" -f $keyWords, $ReturnValue.Error)
+    # Win-DebugTimestamp -output ("{0}: Process result file > {1}" -f $keyWords, $ReturnValue.Result)
     if ([String]::IsNullOrEmpty($ReturnValue.ID)) {
         Win-DebugTimestamp -output ("{0}: Can not get process id" -f $keyWords)
     } else {
@@ -2560,6 +2560,7 @@ function WBase-CheckProcessOutput
     }
 
     if ($ReturnValue.result) {
+        <#
         Win-DebugTimestamp -output (
             "For more info, please double check output log > {0}" -f $CheckOutputLogFile
         )
@@ -2567,24 +2568,32 @@ function WBase-CheckProcessOutput
         Win-DebugTimestamp -output (
             "For more info, please double check error log > {0}" -f $CheckErrorLogFile
         )
-
+        #>
         Win-DebugTimestamp -output (
             "The process({0}) ---------------------- passed" -f $keyWords
         )
     } else {
         if (-not [String]::IsNullOrEmpty($ReturnValue.process.output)) {
             Win-DebugTimestamp -output (
-                "{0}: Get output log of the process > `r`n{1}" -f
+                "{0}: The process >>>>> output >>>>> `r`n{1}" -f
                     $keyWords,
                     $ReturnValue.process.output
+            )
+
+            Win-DebugTimestamp -output (
+                "{0}: The process >>>>> output end >>>>>" -f $keyWords
             )
         }
 
         if (-not [String]::IsNullOrEmpty($ReturnValue.process.error)) {
             Win-DebugTimestamp -output (
-                "{0}: Get error log of the process > `r`n{1}" -f
+                "{0}: The process >>>>> error >>>>> `r`n{1}" -f
                     $keyWords,
                     $ReturnValue.process.error
+            )
+
+            Win-DebugTimestamp -output (
+                "{0}: The process >>>>> error end >>>>>" -f $keyWords
             )
         }
 
