@@ -1448,22 +1448,38 @@ function WBaseHandleUninstallingResidues
 
     Foreach ($URFile in $URFiles) {
         Invoke-Command -ScriptBlock {
-                                      Param($URFile)
-                                      $localPath = (pwd).path
-                                      $URPath = $URFile.DirectoryName
-                                      $URName = $URFile.Name
-                                      cd $URPath
-                                      takeown /f $URName
-                                      cacls $URName /P Administrator:F /E
-                                      try {
-                                          Remove-Item -Path $URFile
-                                      } catch {
-                                          Rename-Item -Path $URFile -NewName ("{0}.txt" -f $URFile)
-                                          Remove-Item -Path ("{0}.txt" -f $URFile)
-                                      }
+            Param($URFile)
 
-                                      cd $localPath
-                                      } -ArgumentList $URFile | out-null
+            $localPath = (pwd).path
+            $URPath = $URFile.DirectoryName
+            $URName = $URFile.Name
+            cd $URPath
+            takeown /f $URName
+            cacls $URName /P Administrator:F /E
+
+            $RemoveError = $null
+            Remove-Item `
+                -Path $URFile `
+                -ErrorAction SilentlyContinue `
+                -ErrorVariable RemoveError
+            if (-not [String]::IsNullOrEmpty($RemoveError)) {
+                $RenameError = $null
+                Rename-Item `
+                    -Path $URFile `
+                    -NewName ("{0}.txt" -f $URFile) `
+                    -ErrorAction SilentlyContinue `
+                    -ErrorVariable RenameError
+                if ([String]::IsNullOrEmpty($RenameError)) {
+                    $RemoveError = $null
+                    Remove-Item `
+                        -Path ("{0}.txt" -f $URFile) `
+                        -ErrorAction SilentlyContinue `
+                        -ErrorVariable RemoveError
+                }
+            }
+
+            cd $localPath
+        } -ArgumentList $URFile | out-null
 
         if (-not (Test-Path -Path $URFile)) {
             Win-DebugTimestamp -output ("Host: Delete uninstalling residues file > {0}" -f $URFile)
