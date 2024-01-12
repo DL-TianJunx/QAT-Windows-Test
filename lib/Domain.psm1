@@ -335,10 +335,15 @@ function Domain-RemoveVMs
                         }
 
                         Remove-VM -Name $VM.Name -Force -Confirm:$false | out-null
-                        if ($VM.HardDrives.Path -match "QatServer305") {
-                            $VMArray += $VM.HardDrives.Path
-                        } else {
-                            Remove-Item -Path $VM.HardDrives.Path -Force -Confirm:$false | out-null
+                        if (-not [String]::IsNullOrEmpty($VM.HardDrives.Path)) {
+                            $KeyWords = $LocationInfo.Domain.S2DStorage.split("\\")[1]
+                            if ($VM.HardDrives.Path -match $KeyWords) {
+                                $VMArray += $VM.HardDrives.Path
+                            } else {
+                                if (Test-Path -Path $VM.HardDrives.Path) {
+                                    Remove-Item -Path $VM.HardDrives.Path -Force -Confirm:$false | out-null
+                                }
+                            }
                         }
                     }
                 }
@@ -346,7 +351,9 @@ function Domain-RemoveVMs
             }
 
             Foreach ($VMParh in $VMArray) {
-                Remove-Item -Path $VMParh -Force -Confirm:$false | out-null
+                if (Test-Path -Path $VMParh) {
+                    Remove-Item -Path $VMParh -Force -Confirm:$false | out-null
+                }
             }
         } else {
             Invoke-Command -Session $DomainPSSession -ScriptBlock {
