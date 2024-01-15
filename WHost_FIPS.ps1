@@ -87,91 +87,65 @@ try {
         -QatDriverFullPath $PFVFDriverPath `
         -BertaConfig $BertaConfig | out-null
 
-    # Check and set UQ mode
-    $DisableDeviceFlag = $false
-    $UQModeStatus = UT-CheckUQMode `
-        -CheckFlag $true `
-        -Remote $false
-    if (-not $UQModeStatus) {
-        $DisableDeviceFlag = $true
-        UT-SetUQMode `
-            -UQMode $true `
-            -Remote $false | out-null
-    } 
-
-    # Check and set Services Data
-    $ServicesStatus = UT-checkFIPSServicesData `
-        -CheckServiceEnableFlag "sym" `
-        -CheckServiceNeededFlag "sym" `
-        -Remote $false
-    if (-not $ServicesStatus) {
-        $DisableDeviceFlag = $true
-        UT-SetFIPSServicesData `
-            -ServiceEnable "sym" `
-            -ServiceNeeded "sym" `
-            -Remote $false | out-null
-    }
-    
-    UT-WorkAround `
-        -Remote $false `
-        -DisableFlag $DisableDeviceFlag | out-null
-
     Win-DebugTimestamp -output ("Initialize test environment....")
     WinHost-ENVInit | out-null
+    FIPS-ENV -ENVType "init" | out-null
 
     Win-DebugTimestamp -output ("Start to run test case....")
     Win-DebugTimestamp -output (
         "-------------------------------------------------------------------------------------------------"
     )
 
-    foreach ($test_group in $FIPS.batch.testGroups) {
-        Win-DebugTimestamp -output ( "Started test group $($test_group.tgId)" )
-    
-        if ($test_group.testType -eq "AFT") {
-            foreach ($test in $test_group.tests) {
-                $testName = "FIPS_UQ_Host"
-                $testName = "{0}_{1}_{2}_tgId_{3}_tcId_{4}" -f $testName, $($FIPS.batch.algorithm), $($test_group.direction), $($test_group.tgId), $($test.tcId)
-                Win-DebugTimestamp -output (  "`t started test $($test.tcId)" )
+    $TestCaseHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $FIPS.FIPSSamplePath
 
-                if([String]::IsNullOrEmpty($($test.aad))){
+    foreach ($testGroup in $TestCaseHashtable.testGroups) {
+        Win-DebugTimestamp -output ( "Started test group {0}" -f $testGroup.tgId )
+    
+        if ($testGroup.testType -eq "AFT") {
+            foreach ($test in $testGroup.tests) {
+                $testName = "FIPS_UQ_Host"
+                $testName = "{0}_{1}_{2}_TestGroup_{3}_TestCase_{4}" -f $testName, $TestCaseHashtable.algorithm, $testGroup.direction, $testGroup.tgId, $test.tcId
+                Win-DebugTimestamp -output (  "`t started test {0}" -f $test.tcId )
+
+                if([String]::IsNullOrEmpty($test.aad)){
                     $test.aad = "tempData"
                 }
 
-                if($($test_group.direction) -eq "encrypt"){
+                if($testGroup.direction -eq "encrypt"){
 
-                    if([String]::IsNullOrEmpty($($test.pt))){
+                    if([String]::IsNullOrEmpty($test.pt)){
                         $test.pt = "tempData"
                     }
 
                     $FIPSTestResult = FIPS-Entry `
-                    -_tgId $($test_group.tgId) `
-                    -_tcId $($test.tcId) `
-                    -_direction $($test_group.direction) `
-                    -_in $($test.pt) `
-                    -_key $($test.key) `
-                    -_iv $($test.iv) `
-                    -_aad $($test.aad) `
-                    -_aadLen $($test_group.aadLen) `
-                    -_tagLen $($test_group.tagLen) `
-                    -_payloadLen $($test_group.payloadLen) `
+                    -TestGroupId $testGroup.tgId `
+                    -TestCaseId $test.tcId `
+                    -EncryptDecryptDirection $testGroup.direction `
+                    -InFileContent $test.pt `
+                    -KeyFileContent $test.key `
+                    -IvFileContent $test.iv `
+                    -AadFileContent $test.aad `
+                    -AadLen $testGroup.aadLen `
+                    -TagLen $testGroup.tagLen `
+                    -PayloadLen $testGroup.payloadLen `
                     -Remote $false
                 }else{
 
-                    if([String]::IsNullOrEmpty($($test.ct))){
+                    if([String]::IsNullOrEmpty($test.ct)){
                         $test.ct = "tempData"
                     }
 
                     $FIPSTestResult = FIPS-Entry `
-                    -_tgId $($test_group.tgId) `
-                    -_tcId $($test.tcId) `
-                    -_direction $($test_group.direction) `
-                    -_in ($($test.ct)+$($test.tag)) `
-                    -_key $($test.key) `
-                    -_iv $($test.iv) `
-                    -_aad $($test.aad) `
-                    -_aadLen $($test_group.aadLen) `
-                    -_tagLen $($test_group.tagLen) `
-                    -_payloadLen $($test_group.payloadLen) `
+                    -TestGroupId $testGroup.tgId `
+                    -TestCaseId $test.tcId `
+                    -EncryptDecryptDirection $testGroup.direction `
+                    -InFileContent ($test.ct+$test.tag) `
+                    -KeyFileContent $test.key `
+                    -IvFileContent $test.iv `
+                    -AadFileContent $test.aad `
+                    -AadLen $testGroup.aadLen `
+                    -TagLen $testGroup.tagLen `
+                    -PayloadLen $testGroup.payloadLen `
                     -Remote $false
                 }
 
@@ -199,10 +173,10 @@ try {
 
                 WBase-WriteTestResult -TestResult $TestCaseResultsList
 
-                Win-DebugTimestamp -output ( "`t End test $($tcId)")
+                Win-DebugTimestamp -output ( "`t End test {0}" -f $test.tcId)
             }
         }
-        Win-DebugTimestamp -output ( "End test group $($tgId)")
+        Win-DebugTimestamp -output ( "End test group {0}" -f $testGroup.tgId)
     }
 }
 catch {
