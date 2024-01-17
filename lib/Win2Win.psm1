@@ -362,10 +362,12 @@ function WTW-ENVInit
 
     if ($InitVM) {
         # Remove VMs
-        $VMNameList | ForEach-Object {
-            $VMName = ("{0}_{1}" -f $env:COMPUTERNAME, $_)
-            HV-RemoveVM -VMName $VMName -VHDPath $VHDPath | out-null
-            HV-RemoveVM -VMName $VMName | out-null
+        $VMList = Get-VM
+        if (-not [String]::IsNullOrEmpty($VMList)) {
+            Foreach ($VM in $VMList) {
+                HV-RemoveVM -VMName $VM.Name -VHDPath $VHDPath | out-null
+                HV-RemoveVM -VMName $VM.Name | out-null
+            }
         }
 
         # Check VHD file for VMs
