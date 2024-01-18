@@ -2718,10 +2718,10 @@ function WBase-CheckOutputLog
         [Parameter(Mandatory=$True)]
         [string]$TestErrorLog,
 
-        [bool]$checkFIPSLog,
-
         [Parameter(Mandatory=$True)]
         [bool]$Remote,
+
+        [bool]$checkFIPSLog = $false,
 
         [object]$Session = $null,
 
@@ -2847,7 +2847,7 @@ function WBase-CheckOutputLogError
         [Parameter(Mandatory=$True)]
         [object]$OutputLog,
 
-        [bool]$checkFIPSLog
+        [bool]$checkFIPSLog = $false
     )
 
     # Please check the output log file is not null at first

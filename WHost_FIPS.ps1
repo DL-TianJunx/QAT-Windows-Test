@@ -34,8 +34,8 @@ WBase-ReturnFilesInit `
     -ResultFile $ResultFile | out-null
 $TestSuiteName = (Split-Path -Path $PSCommandPath -Leaf).Split(".")[0]
 $CompareFile = "{0}\\CompareFile_{1}.log" -f
-$BertaResultPath,
-$TestSuiteName
+    $BertaResultPath,
+    $TestSuiteName
 
 try {
     $BertaConfig = [hashtable] @{}
@@ -104,49 +104,49 @@ try {
         if ($testGroup.testType -eq "AFT") {
             foreach ($test in $testGroup.tests) {
                 $testName = "FIPS_UQ_Host"
-                $testName = "{0}_{1}_{2}_TestGroup_{3}_TestCase_{4}" -f $testName, $TestCaseHashtable.algorithm, $testGroup.direction, $testGroup.tgId, $test.tcId
+                $testName = "{0}_{1}_{2}_TestGroup_{3}_TestCase_{4}" -f 
+                    $testName, 
+                    $TestCaseHashtable.algorithm, 
+                    $testGroup.direction, 
+                    $testGroup.tgId, 
+                    $test.tcId
                 Win-DebugTimestamp -output (  "`t started test {0}" -f $test.tcId )
-
-                if([String]::IsNullOrEmpty($test.aad)){
+                if ([String]::IsNullOrEmpty($test.aad)) {
                     $test.aad = "tempData"
                 }
-
-                if($testGroup.direction -eq "encrypt"){
-
-                    if([String]::IsNullOrEmpty($test.pt)){
+                if ($testGroup.direction -eq "encrypt") {
+                    if ([String]::IsNullOrEmpty($test.pt)) {
                         $test.pt = "tempData"
                     }
-
                     $FIPSTestResult = FIPS-Entry `
-                    -TestGroupId $testGroup.tgId `
-                    -TestCaseId $test.tcId `
-                    -EncryptDecryptDirection $testGroup.direction `
-                    -InFileContent $test.pt `
-                    -KeyFileContent $test.key `
-                    -IvFileContent $test.iv `
-                    -AadFileContent $test.aad `
-                    -AadLen $testGroup.aadLen `
-                    -TagLen $testGroup.tagLen `
-                    -PayloadLen $testGroup.payloadLen `
-                    -Remote $false
-                }else{
-
-                    if([String]::IsNullOrEmpty($test.ct)){
+                        -TestGroupId $testGroup.tgId `
+                        -TestCaseId $test.tcId `
+                        -EncryptDecryptDirection $testGroup.direction `
+                        -InFileContent $test.pt `
+                        -KeyFileContent $test.key `
+                        -IvFileContent $test.iv `
+                        -AadFileContent $test.aad `
+                        -AadLen $testGroup.aadLen `
+                        -TagLen $testGroup.tagLen `
+                        -PayloadLen $testGroup.payloadLen `
+                        -Remote $false
+                }
+                else {
+                    if ([String]::IsNullOrEmpty($test.ct)) {
                         $test.ct = "tempData"
                     }
-
                     $FIPSTestResult = FIPS-Entry `
-                    -TestGroupId $testGroup.tgId `
-                    -TestCaseId $test.tcId `
-                    -EncryptDecryptDirection $testGroup.direction `
-                    -InFileContent ($test.ct+$test.tag) `
-                    -KeyFileContent $test.key `
-                    -IvFileContent $test.iv `
-                    -AadFileContent $test.aad `
-                    -AadLen $testGroup.aadLen `
-                    -TagLen $testGroup.tagLen `
-                    -PayloadLen $testGroup.payloadLen `
-                    -Remote $false
+                        -TestGroupId $testGroup.tgId `
+                        -TestCaseId $test.tcId `
+                        -EncryptDecryptDirection $testGroup.direction `
+                        -InFileContent ($test.ct + $test.tag) `
+                        -KeyFileContent $test.key `
+                        -IvFileContent $test.iv `
+                        -AadFileContent $test.aad `
+                        -AadLen $testGroup.aadLen `
+                        -TagLen $testGroup.tagLen `
+                        -PayloadLen $testGroup.payloadLen `
+                        -Remote $false
                 }
 
                 if ($FIPSTestResult.result) {
@@ -157,8 +157,8 @@ try {
 
                     Win-DebugTimestamp -output (
                         "The test '{0}' is failed > {1}" -f
-                        $testName,
-                        $FIPSTestResult.error
+                            $testName,
+                            $FIPSTestResult.error
                     )
                     if ($FailToStop) {
                         throw ("If test caes is failed, then stop testing.")
