@@ -741,8 +741,8 @@ function WTW-ProcessInstaller
     } else {
         $InstallerTestResultPath = "{0}\\{1}_{2}_Result.json" -f
             $WinTestProcessPath,
-            $keyWords,
-            $LocationInfo.TestCaseName
+            $LocationInfo.TestCaseName,
+            $keyWords
     }
 
     if ($TestType -eq "installer_files") {
@@ -1195,8 +1195,8 @@ function WTW-ProcessParcomp
     } else {
         $ParcompTestResultPath = "{0}\\{1}_{2}_Result.json" -f
             $WinTestProcessPath,
-            $keyWords,
-            $LocationInfo.TestCaseName
+            $LocationInfo.TestCaseName,
+            $keyWords
     }
 
     if ($TestType -eq "Base_Parameter") {
@@ -1763,8 +1763,8 @@ function WTW-ProcessCNGTest
     } else {
         $CNGTestResultPath = "{0}\\{1}_{2}_Result.json" -f
             $WinTestProcessPath,
-            $keyWords,
-            $LocationInfo.TestCaseName
+            $LocationInfo.TestCaseName,
+            $keyWords
     }
 
     $CNGTestOutLog = "{0}\\{1}" -f $TestPath, $CNGTestOpts.OutputLog

@@ -831,8 +831,8 @@ function Gtest-Process
     } else {
         $GtestResultPath = "{0}\\{1}_{2}_Result.json" -f
             $WinTestProcessPath,
-            $keyWords,
-            $LocationInfo.TestCaseName
+            $LocationInfo.TestCaseName,
+            $keyWords
     }
 
     if ($Remote) {
