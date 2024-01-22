@@ -634,7 +634,7 @@ function WTW-ChechFlagFile
     $RunCheckFlag = $true
     $TimeInterval = 3
     $WaitTime = 0
-    $TimeOut = 900
+    $TimeOut = 3600
 
     do {
         Start-Sleep -Seconds $TimeInterval

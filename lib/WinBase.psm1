@@ -2015,16 +2015,16 @@ function WBase-StartProcess
         } else {
             $ProcessOutputLogPath = "{0}\\{1}_{2}_Output.txt" -f
                 $WinTestProcessPath,
-                $keyWords,
-                $LocationInfo.TestCaseName
+                $LocationInfo.TestCaseName,
+                $keyWords
             $ProcessErrorLogPath = "{0}\\{1}_{2}_Error.txt" -f
                 $WinTestProcessPath,
-                $keyWords,
-                $LocationInfo.TestCaseName
+                $LocationInfo.TestCaseName,
+                $keyWords
             $ProcessResultPath = "{0}\\{1}_{2}_Result.json" -f
                 $WinTestProcessPath,
-                $keyWords,
-                $LocationInfo.TestCaseName
+                $LocationInfo.TestCaseName,
+                $keyWords
         }
         $ProcessID = Invoke-Command `
             -ScriptBlock $ScriptBlock `
@@ -2411,15 +2411,15 @@ function WBase-CheckProcessOutput
             }
         } else {
             $ProcessOutputLogPathName = "{0}_{1}_Output.txt" -f
-                $keyWords,
-                $LocationInfo.TestCaseName
+                $LocationInfo.TestCaseName,
+                $keyWords
             $ProcessErrorLogPathName = "{0}_{1}_Error.txt" -f
-                $keyWords,
-                $LocationInfo.TestCaseName
+                $LocationInfo.TestCaseName,
+                $keyWords
             if (-not [String]::IsNullOrEmpty($ProcessResultPath)) {
                 $ProcessResultPathName = "{0}_{1}_Result.json" -f
-                    $keyWords,
-                    $LocationInfo.TestCaseName
+                    $LocationInfo.TestCaseName,
+                    $keyWords
             }
         }
 
