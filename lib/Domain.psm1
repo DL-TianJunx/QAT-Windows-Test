@@ -708,8 +708,8 @@ function Domain-ProcessParcomp
     } else {
         $ParcompTestResultPath = "{0}\\{1}_{2}_Result.json" -f
             $WinTestProcessPath,
-            $keyWords,
-            $LocationInfo.TestCaseName
+            $LocationInfo.TestCaseName,
+            $keyWords
     }
 
     $ParcompType = "Fallback"
