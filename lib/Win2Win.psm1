@@ -371,18 +371,50 @@ function WTW-ENVInit
         }
 
         # Check VHD file for VMs
-        $ParentsVM = "{0}\{1}.vhdx" -f $VHDPath, $LocationInfo.VM.ImageName
-        if (-not [System.IO.File]::Exists($ParentsVM)) {
+        $ParentsVM = "{0}\{1}.vhdx" -f
+            $VHDPath,
+            $LocationInfo.VM.ImageName
+        $ParentsVMMD5 = "{0}\{1}.md5" -f
+            $VHDPath,
+            $LocationInfo.VM.ImageName
+        $BertaSource = "{0}\\{1}.vhdx" -f
+            $VHDAndTestFiles.SourceVMPath,
+            $LocationInfo.VM.ImageName
+        $BertaSourceMD5 = "{0}\\{1}.md5" -f
+            $VHDAndTestFiles.SourceVMPath,
+            $LocationInfo.VM.ImageName
+        $CopyFlag = $false
+        if ([System.IO.File]::Exists($ParentsVMMD5)) {
+            $ParentsVMMD5Content = Get-Content -Path $ParentsVMMD5 -Raw
+            $BertaSourceMD5Content = Get-Content -Path $BertaSourceMD5 -Raw
+            if ($ParentsVMMD5Content -match $BertaSourceMD5Content) {
+                $CopyFlag = $false
+            } else {
+                $CopyFlag = $true
+            }
+        } else {
+            $CopyFlag = $true
+        }
+
+        if ($CopyFlag) {
             Win-DebugTimestamp -output (
                 "Copy Vhd file ({0}.vhdx) from remote {1}" -f
                     $LocationInfo.VM.ImageName,
                     $VHDAndTestFiles.SourceVMPath
             )
 
-            $BertaSource = "{0}\\{1}.vhdx" -f
-                $VHDAndTestFiles.SourceVMPath,
-                $LocationInfo.VM.ImageName
+            if ([System.IO.File]::Exists($ParentsVMMD5)) {
+                Get-Item -Path $ParentsVMMD5 | Remove-Item -Recurse -Force | out-null
+            }
+            Copy-Item `
+                -Path $BertaSourceMD5 `
+                -Destination $ParentsVMMD5 `
+                -Force `
+                -ErrorAction Stop | out-null
 
+            if ([System.IO.File]::Exists($ParentsVM)) {
+                Get-Item -Path $ParentsVM | Remove-Item -Recurse -Force | out-null
+            }
             Copy-Item `
                 -Path $BertaSource `
                 -Destination $ParentsVM `
