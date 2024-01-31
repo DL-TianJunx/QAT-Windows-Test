@@ -642,6 +642,11 @@ function WBase-LocationInfoInit
         -Remote $false `
         -DisableFlag $DisableDeviceFlag | out-null
 
+    # Init FIPS SourcePath Directory
+    If (-not (Test-Path -Path $global:FIPSSourcePath)) {
+        New-Item -Path $global:FIPSSourcePath -ItemType Directory | out-null
+    }
+
     # Correct ICPQAT file name
     $TraceLogOpts.PDBDriverPath.Host.IcpQat = "{0}\\{1}.pdb" -f
         $LocalPFDriverPath,
@@ -2855,7 +2860,8 @@ function WBase-CheckOutputLogError
 
     $OutputLog | ForEach-Object {
         $_ = $_ -replace "\s{2,}", " "
-        if($checkFIPSLog){
+        # This is workaround for FIPS application output error info
+        if ($checkFIPSLog) {
             if ($_ -ceq "Error") {
                 $ReturnValue = $false
             }
@@ -2863,7 +2869,7 @@ function WBase-CheckOutputLogError
             if ($_ -ceq "ERROR") {
                 $ReturnValue = $false
             }
-        }else{
+        } else {
             if ($_ -match "error") {
                 $ReturnValue = $false
             }

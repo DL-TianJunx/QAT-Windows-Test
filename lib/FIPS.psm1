@@ -1,20 +1,49 @@
 
 $global:FIPSSourcePath = "{0}\\FIPS" -f $STVWinPath
 $global:FIPS = [hashtable] @{
-    FIPSPath        = "{0}\FIPS" -f $QATTESTPATH
-    FIPSSamplePath  = "{0}\FIPS\ACVP-AES-GCM.req" -f $QATTESTPATH
-    InFilePath      = Join-Path -Path $FIPSSourcePath -ChildPath "in.hex"
-    KeyFilePath     = Join-Path -Path $FIPSSourcePath -ChildPath "key.hex"
-    IvFilePath      = Join-Path -Path $FIPSSourcePath -ChildPath "iv.hex"
-    AadFilePath     = Join-Path -Path $FIPSSourcePath -ChildPath "aad.hex"
-    OutFilePath     = Join-Path -Path $FIPSSourcePath -ChildPath "out.hex"
+    FIPSPath            = "{0}\FIPS" -f $QATTESTPATH
+    FIPSSamplePath      = "{0}\FIPS\ACVP-AES-GCM.req" -f $QATTESTPATH
+    InputValuePath      = "{0}\\InputValue.json" -f $FIPSSourcePath
+    TestCaseJsonPath    = "{0}\\TestCaseResultJson.json" -f $FIPSSourcePath
+    InFilePath          = Join-Path -Path $FIPSSourcePath -ChildPath "in.hex"
+    KeyFilePath         = Join-Path -Path $FIPSSourcePath -ChildPath "key.hex"
+    IvFilePath          = Join-Path -Path $FIPSSourcePath -ChildPath "iv.hex"
+    AadFilePath         = Join-Path -Path $FIPSSourcePath -ChildPath "aad.hex"
+    OutFilePath         = Join-Path -Path $FIPSSourcePath -ChildPath "out.hex"
 }
 
 function FIPS-ENV {
 
     Param(
+        [Parameter(Mandatory=$True)]
+        [string]$BertaResultPath,
+
+        [Parameter(Mandatory=$True)]
+        [string]$ResultJsonFile,
+
         [string]$ENVType = "init"
     )
+
+    Set-Variable -Name "FIPSResultJsonFile" -Value ("{0}\\{1}" -f $BertaResultPath, $ResultJsonFile) -Scope global
+
+    if (Test-Path -Path $FIPSResultJsonFile) {
+        $FIPSResultJsonFilePath = Split-Path -Path $FIPSResultJsonFile
+        $FIPSResultJsonFileName = Split-Path -Path $FIPSResultJsonFile -Leaf
+        $FIPSResultFileNameArray = $FIPSResultJsonFileName.split(".")
+        for ($i = 0; $i -lt 1000; $i++) {
+            $FIPSResultFile = "{0}{1}-{2}.{3}" -f
+                $FIPSResultJsonFilePath,
+                $FIPSResultFileNameArray[0],
+                $i,
+                $FIPSResultFileNameArray[1]
+            if (-not (Test-Path -Path $FIPSResultFile)) {
+                break
+            }
+        }
+        Copy-Item -Path $FIPSResultJsonFile -Destination $FIPSResultFile
+        Get-Item -Path $FIPSResultJsonFile | Remove-Item -Recurse
+    }
+    New-Item -Path $BertaResultPath -Name $ResultJsonFile -ItemType "file" | out-null
 
     # Check and set UQ mode
     $DisableDeviceFlag = $false
@@ -59,16 +88,7 @@ function FIPS-Process {
         [string]$EncryptDecryptDirection,
 
         [Parameter(Mandatory = $True)]
-        [string]$InFileContent,
-
-        [Parameter(Mandatory = $True)]
-        [string]$KeyFileContent,
-
-        [Parameter(Mandatory = $True)]
-        [string]$IvFileContent,
-
-        [Parameter(Mandatory = $True)]
-        [string]$AadFileContent,
+        [string]$InputValuePath,
 
         [Parameter(Mandatory = $True)]
         [string]$AadLen,
@@ -91,7 +111,12 @@ function FIPS-Process {
     $ReturnValue = [hashtable] @{
         result    = $true
         error     = "no_error"
-        testcases = [System.Array] @()
+    }
+
+    $TestCaseResultJson = [hashtable] @{
+        pt    = $null
+        ct    = $null
+        tag   = $null
     }
 
     Start-Sleep -Seconds 5
@@ -135,11 +160,7 @@ function FIPS-Process {
         "{0}: Start FIPS process ..." -f $LogKeyWord
     )
 
-    # Create FIPS SourcePath Directory
-    If (-not(Test-Path -Path $FIPSSourcePath)) {
-        New-Item -Path $FIPSSourcePath -ItemType Directory | out-null
-    }
-
+    $InputValueHashtable = WBase-ReadHashtableFromJsonFile -InfoFilePath $FIPS.InputValuePath
     $ptBeforeEncryptFilePath = Join-Path -Path $FIPSSourcePath -ChildPath "ptBeforeEncrypt.hex"
     $ptAfterDecryptFilePath = Join-Path -Path $FIPSSourcePath -ChildPath "ptAfterDecrypt.hex"
     $ptRandomBeforeEncryptFilePath = Join-Path -Path $FIPSSourcePath -ChildPath "ptRandomBeforeEncrypt.hex"
@@ -160,10 +181,10 @@ function FIPS-Process {
 
     if ($EncryptDecryptDirection -eq "encrypt") {
         if ($PayloadLen -eq 0) {
-            $InFileContent = ""
+            $InputValueHashtable.InFileContent = ""
         }
-        $InFileContent | Out-File -FilePath $FIPS.InFilePath -Force -Encoding utf8
-        $InFileContent | Out-File -FilePath $ptBeforeEncryptFilePath -Force -Encoding utf8
+        $InputValueHashtable.InFileContent | Out-File -FilePath $FIPS.InFilePath -Force -Encoding utf8
+        $InputValueHashtable.InFileContent | Out-File -FilePath $ptBeforeEncryptFilePath -Force -Encoding utf8
     }
     else {
         if ($PayloadLen -eq 0) {
@@ -174,36 +195,36 @@ function FIPS-Process {
             $ptRandom = -join (1..($PayloadLen / 4) | % { [char][int]((48..57 + 65..70) | Get-Random) })
         }
         if ($AadLen -eq 0) {
-            $AadFileContent = ""
-            $AadFileContent | Out-File -FilePath $FIPS.AadFilePath -Force -Encoding utf8
+            $InputValueHashtable.AadFileContent = ""
+            $InputValueHashtable.AadFileContent | Out-File -FilePath $FIPS.AadFilePath -Force -Encoding utf8
         }
         $ptRandom | Out-File $ptRandomBeforeEncryptFilePath -Encoding ascii
 
         if ($Remote) {
-            $ProcessKeyWords = "FIPS_{0}_TestGroup {1}_pt to encrypt_TestCase {2}" -f $VMNameSuffix, $TestGroupId, $TestCaseId
-            $inProcess = FIPStest `
+            $ProcessKeyWords = "Direction_{0}_EncryptForDecrypt" -f $VMNameSuffix
+            $inProcess = FIPSBase `
                 -ProcessKeyWords $ProcessKeyWords `
                 -ProcessFilePath $ProcessFilePath `
                 -EncryptDecryptDirection "encrypt" `
                 -InFileContent $ptRandom `
-                -KeyFileContent $KeyFileContent `
-                -IvFileContent $IvFileContent `
-                -AadFileContent $AadFileContent `
+                -KeyFileContent $InputValueHashtable.KeyFileContent `
+                -IvFileContent $InputValueHashtable.IvFileContent `
+                -AadFileContent $InputValueHashtable.AadFileContent `
                 -TagLen $TagLen `
                 -PayloadLen $PayloadLen `
                 -Remote $Remote `
                 -Session $Session
         }
         else {
-            $ProcessKeyWords = "FIPS_TestGroup {0}_pt to encrypt_TestCase {1}" -f $TestGroupId, $TestCaseId
-            $inProcess = FIPStest `
+            $ProcessKeyWords = "Direction_EncryptForDecrypt"
+            $inProcess = FIPSBase `
                 -ProcessKeyWords $ProcessKeyWords `
                 -ProcessFilePath $ProcessFilePath `
                 -EncryptDecryptDirection "encrypt" `
                 -InFileContent $ptRandom `
-                -KeyFileContent $KeyFileContent `
-                -IvFileContent $IvFileContent `
-                -AadFileContent $AadFileContent `
+                -KeyFileContent $InputValueHashtable.KeyFileContent `
+                -IvFileContent $InputValueHashtable.IvFileContent `
+                -AadFileContent $InputValueHashtable.AadFileContent `
                 -TagLen $TagLen `
                 -PayloadLen $PayloadLen `
                 -Remote $Remote
@@ -247,21 +268,21 @@ function FIPS-Process {
     }
     if ($Remote) {
         if ($AadLen -eq 0) {
-            $AadFileContent = ""
-            $AadFileContent | Out-File -FilePath $FIPS.AadFilePath -Force -Encoding utf8
+            $InputValueHashtable.AadFileContent = ""
+            $InputValueHashtable.AadFileContent | Out-File -FilePath $FIPS.AadFilePath -Force -Encoding utf8
         }
-        $ProcessKeyWords = "FIPS_{0}_TestGroup {1}_{2}_TestCase {3}" -f
-            $VMNameSuffix,
-            $TestGroupId,
-            $EncryptDecryptDirection,
-            $TestCaseId
-        $inProcess = FIPStest `
+        if($EncryptDecryptDirection -eq "encrypt"){
+            $ProcessKeyWords = "{0}_Direction_encrypt" -f $VMNameSuffix
+        }else{
+            $ProcessKeyWords = "{0}_Direction_decryptRandomly" -f $VMNameSuffix
+        }
+        $inProcess = FIPSBase `
             -ProcessKeyWords $ProcessKeyWords `
             -ProcessFilePath $ProcessFilePath `
             -EncryptDecryptDirection $EncryptDecryptDirection `
-            -KeyFileContent $KeyFileContent `
-            -IvFileContent $IvFileContent `
-            -AadFileContent $AadFileContent `
+            -KeyFileContent $InputValueHashtable.KeyFileContent `
+            -IvFileContent $InputValueHashtable.IvFileContent `
+            -AadFileContent $InputValueHashtable.AadFileContent `
             -TagLen $TagLen `
             -PayloadLen $PayloadLen `
             -Remote $Remote `
@@ -269,20 +290,21 @@ function FIPS-Process {
     }
     else {
         if ($AadLen -eq 0) {
-            $AadFileContent = ""
-            $AadFileContent | Out-File -FilePath $FIPS.AadFilePath -Force -Encoding utf8
+            $InputValueHashtable.AadFileContent = ""
+            $InputValueHashtable.AadFileContent | Out-File -FilePath $FIPS.AadFilePath -Force -Encoding utf8
         }
-        $ProcessKeyWords = "FIPS_TestGroup {0}_{1}_TestCase {2}" -f
-            $TestGroupId,
-            $EncryptDecryptDirection,
-            $TestCaseId
-        $inProcess = FIPStest `
+        if($EncryptDecryptDirection -eq "encrypt"){
+            $ProcessKeyWords = "Direction_encrypt"
+        }else{
+            $ProcessKeyWords = "Direction_decryptRandomly"
+        }
+        $inProcess = FIPSBase `
             -ProcessKeyWords $ProcessKeyWords `
             -ProcessFilePath $ProcessFilePath `
             -EncryptDecryptDirection $EncryptDecryptDirection `
-            -KeyFileContent $KeyFileContent `
-            -IvFileContent $IvFileContent `
-            -AadFileContent $AadFileContent `
+            -KeyFileContent $InputValueHashtable.KeyFileContent `
+            -IvFileContent $InputValueHashtable.IvFileContent `
+            -AadFileContent $InputValueHashtable.AadFileContent `
             -TagLen $TagLen `
             -PayloadLen $PayloadLen `
             -Remote $Remote
@@ -340,11 +362,13 @@ function FIPS-Process {
         else {
             $CipherText = $AppResponse.Substring(0, $AppResponse.Length - $splitValue)
             $Tag = $AppResponse.Substring($AppResponse.Length - $splitValue)
+            $TestCaseResultJson.ct = $CipherText
+            $TestCaseResultJson.tag = $Tag
 
             #Compare the MD5 values of plaintext before encryption and plaintext after decryption
-            $outProcessKeyWords = "FIPS_TestGroup {0}_pt to decrypt_TestCase {1}" -f $TestGroupId, $TestCaseId
+            $outProcessKeyWords = "Direction_DecryptAfterEncrypt"
             if ($Remote) {
-                $outProcess = FIPStest `
+                $outProcess = FIPSBase `
                     -ProcessKeyWords $outProcessKeyWords `
                     -ProcessFilePath $ProcessFilePath `
                     -EncryptDecryptDirection "decrypt" `
@@ -355,7 +379,7 @@ function FIPS-Process {
                     -Session $Session
             }
             else {
-                $outProcess = FIPStest `
+                $outProcess = FIPSBase `
                     -ProcessKeyWords $outProcessKeyWords `
                     -ProcessFilePath $ProcessFilePath `
                     -EncryptDecryptDirection "decrypt" `
@@ -429,7 +453,7 @@ function FIPS-Process {
     else {
         if ($OutputResponse -match "decrypt failed") {
             $ReturnValue.result = $false
-            Win-DebugTimestamp -output ( "`t test $TestCaseId decrypt Failed!")
+            Win-DebugTimestamp -output ( "`t test $TestCaseId decrypt randomly Failed!")
         }
         else {
             if ([String]::IsNullOrEmpty($AppResponse)) {
@@ -452,10 +476,53 @@ function FIPS-Process {
                 Win-DebugTimestamp -output ( "`t test $TestCaseId Failed!")
             }
         }
+
+        #Decyrpt the case normally for FIPSResultJsonFile
+        $ProcessKeyWords = "Direction_decryptNormally"
+        $decryptNormalProcess = FIPSBase `
+            -ProcessKeyWords $ProcessKeyWords `
+            -ProcessFilePath $ProcessFilePath `
+            -EncryptDecryptDirection $EncryptDecryptDirection `
+            -InFileContent $InputValueHashtable.InFileContent `
+            -KeyFileContent $InputValueHashtable.KeyFileContent `
+            -IvFileContent $InputValueHashtable.IvFileContent `
+            -AadFileContent $InputValueHashtable.AadFileContent `
+            -TagLen $TagLen `
+            -PayloadLen $PayloadLen `
+            -Remote $Remote
+
+        if ($Remote) {
+            WBase-WaitProcessToCompletedByID `
+                -ProcessID $decryptNormalProcess.process.ID `
+                -Remote $Remote `
+                -Session $Session
+        }
+        else {
+            WBase-WaitProcessToCompletedByID `
+                -ProcessID $decryptNormalProcess.process.ID `
+                -Remote $Remote
+        }
+
+        $AppResponse = Get-Content $FIPS.OutFilePath
+        $OutputResponse = Get-Content $decryptNormalProcess.process.Output
+        if ($OutputResponse -match "decrypt failed") {
+            Win-DebugTimestamp -output ( "`t test $TestCaseId decrypt normally Failed!")
+        }else{
+            if ([String]::IsNullOrEmpty($AppResponse)) {
+                $TestCaseResultJson.pt = ""
+            }
+            else {
+                $TestCaseResultJson.pt = $AppResponse.Substring(0)
+            }
+        }
     }
     WBase-WriteHashtableToJsonFile `
         -Info $ReturnValue `
         -InfoFilePath $FIPSResultPath | out-null
+
+    WBase-WriteHashtableToJsonFile `
+        -Info $TestCaseResultJson `
+        -InfoFilePath $FIPS.TestCaseJsonPath | out-null
 }
 
 function FIPS-Entry {
@@ -470,16 +537,7 @@ function FIPS-Entry {
         [string]$EncryptDecryptDirection,
 
         [Parameter(Mandatory = $True)]
-        [string]$InFileContent,
-
-        [Parameter(Mandatory = $True)]
-        [string]$KeyFileContent,
-
-        [Parameter(Mandatory = $True)]
-        [string]$IvFileContent,
-
-        [Parameter(Mandatory = $True)]
-        [string]$AadFileContent,
+        [string]$InputValuePath,
 
         [Parameter(Mandatory = $True)]
         [string]$AadLen,
@@ -497,7 +555,6 @@ function FIPS-Entry {
     $ReturnValue = [hashtable] @{
         result    = $true
         error     = "no_error"
-        testcases = [System.Array] @()
     }
 
     WBase-GenerateInfoFile | out-null
@@ -519,10 +576,7 @@ function FIPS-Entry {
             $FIPSProcessArgs = "{0} -TestGroupId {1}" -f $FIPSProcessArgs, $TestGroupId
             $FIPSProcessArgs = "{0} -TestCaseId {1}" -f $FIPSProcessArgs, $TestCaseId
             $FIPSProcessArgs = "{0} -EncryptDecryptDirection {1}" -f $FIPSProcessArgs, $EncryptDecryptDirection
-            $FIPSProcessArgs = "{0} -InFileContent {1}" -f $FIPSProcessArgs, $InFileContent
-            $FIPSProcessArgs = "{0} -KeyFileContent {1}" -f $FIPSProcessArgs, $KeyFileContent
-            $FIPSProcessArgs = "{0} -IvFileContent {1}" -f $FIPSProcessArgs, $IvFileContent
-            $FIPSProcessArgs = "{0} -AadFileContent {1}" -f $FIPSProcessArgs, $AadFileContent
+            $FIPSProcessArgs = "{0} -InputValuePath {1}" -f $FIPSProcessArgs, $FIPS.InputValuePath
             $FIPSProcessArgs = "{0} -AadLen {1}" -f $FIPSProcessArgs, $AadLen
             $FIPSProcessArgs = "{0} -TagLen {1}" -f $FIPSProcessArgs, $TagLen
             $FIPSProcessArgs = "{0} -PayloadLen {1}" -f $FIPSProcessArgs, $PayloadLen
@@ -533,16 +587,13 @@ function FIPS-Entry {
             $FIPSProcessArgs = "{0} -TestGroupId {1}" -f $FIPSProcessArgs, $TestGroupId
             $FIPSProcessArgs = "{0} -TestCaseId {1}" -f $FIPSProcessArgs, $TestCaseId
             $FIPSProcessArgs = "{0} -EncryptDecryptDirection {1}" -f $FIPSProcessArgs, $EncryptDecryptDirection
-            $FIPSProcessArgs = "{0} -InFileContent {1}" -f $FIPSProcessArgs, $InFileContent
-            $FIPSProcessArgs = "{0} -KeyFileContent {1}" -f $FIPSProcessArgs, $KeyFileContent
-            $FIPSProcessArgs = "{0} -IvFileContent {1}" -f $FIPSProcessArgs, $IvFileContent
-            $FIPSProcessArgs = "{0} -AadFileContent {1}" -f $FIPSProcessArgs, $AadFileContent
+            $FIPSProcessArgs = "{0} -InputValuePath {1}" -f $FIPSProcessArgs, $FIPS.InputValuePath
             $FIPSProcessArgs = "{0} -AadLen {1}" -f $FIPSProcessArgs, $AadLen
             $FIPSProcessArgs = "{0} -TagLen {1}" -f $FIPSProcessArgs, $TagLen
             $FIPSProcessArgs = "{0} -PayloadLen {1}" -f $FIPSProcessArgs, $PayloadLen
             $FIPSProcessArgs = "{0} -Remote 0" -f $FIPSProcessArgs
         }
-        $FIPSProcessKeyWords = "FIPS_{0}_TestGroup_{1}_TestCase_{2}" -f $_, $TestGroupId, $TestCaseId
+        $FIPSProcessKeyWords = "FIPS_{0}" -f $_
         $FIPSProcessArgs = "{0} -keyWords {1}" -f $FIPSProcessArgs, $FIPSProcessKeyWords
 
         $FIPSProcess = WBase-StartProcess `
@@ -587,8 +638,7 @@ function FIPS-Entry {
     return $ReturnValue
 }
 
-
-function FIPStest {
+function FIPSBase {
     param (
         [Parameter(Mandatory = $True)]
         [string]$ProcessKeyWords,
